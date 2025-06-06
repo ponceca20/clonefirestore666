@@ -67,8 +67,8 @@ type mockTokenService struct {
 	mock.Mock
 }
 
-func (m *mockTokenService) GenerateToken(ctx context.Context, userID, email string) (string, error) {
-	args := m.Called(ctx, userID, email)
+func (m *mockTokenService) GenerateToken(ctx context.Context, userID, email, tenantID string) (string, error) { // Added tenantID
+	args := m.Called(ctx, userID, email, tenantID) // Added tenantID
 	return args.String(0), args.Error(1)
 }
 
@@ -105,19 +105,24 @@ func (suite *AuthUsecaseTestSuite) TestRegister_Success() {
 	ctx := context.Background()
 	email := "test@example.com"
 	password := "password123"
+	tenantID := "tenant-123" // Added tenantID
 	token := "jwt-token-123"
 
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(nil, usecase.ErrUserNotFound)
-	suite.mockRepo.On("CreateUser", ctx, mock.AnythingOfType("*model.User")).Return(nil)
-	suite.mockToken.On("GenerateToken", ctx, mock.AnythingOfType("string"), email).Return(token, nil)
+	// Expect CreateUser to be called with a user object that includes the tenantID
+	suite.mockRepo.On("CreateUser", ctx, mock.MatchedBy(func(user *model.User) bool {
+		return user.Email == email && user.TenantID == tenantID
+	})).Return(nil)
+	suite.mockToken.On("GenerateToken", ctx, mock.AnythingOfType("string"), email, tenantID).Return(token, nil) // Added tenantID
 
 	// Act
-	user, resultToken, err := suite.usecase.Register(ctx, email, password)
+	user, resultToken, err := suite.usecase.Register(ctx, email, password, tenantID) // Added tenantID
 
 	// Assert
 	require.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), user)
 	assert.Equal(suite.T(), email, user.Email)
+	assert.Equal(suite.T(), tenantID, user.TenantID) // Assert TenantID on returned user
 	assert.Equal(suite.T(), token, resultToken)
 	assert.NotEmpty(suite.T(), user.PasswordHash)
 	assert.NotEqual(suite.T(), password, user.PasswordHash) // Password should be hashed
@@ -135,16 +140,19 @@ func (suite *AuthUsecaseTestSuite) TestRegister_EmailAlreadyTaken() {
 	ctx := context.Background()
 	email := "existing@example.com"
 	password := "password123"
+	tenantID := "tenant-456" // Added tenantID
 
 	existingUser := &model.User{
 		ID:    "existing-user-id",
 		Email: email,
+		// TenantID might or might not be set on existingUser for this test's purpose,
+		// as the check is for email existence before TenantID is deeply involved.
 	}
 
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(existingUser, nil)
 
 	// Act
-	user, token, err := suite.usecase.Register(ctx, email, password)
+	user, token, err := suite.usecase.Register(ctx, email, password, tenantID) // Added tenantID
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -170,7 +178,7 @@ func (suite *AuthUsecaseTestSuite) TestRegister_InvalidEmailFormat() {
 	for _, email := range invalidEmails {
 		suite.Run("invalid_email_"+email, func() {
 			// Act
-			user, token, err := suite.usecase.Register(ctx, email, "password123")
+			user, token, err := suite.usecase.Register(ctx, email, "password123", "tenant-789") // Added tenantID
 
 			// Assert
 			assert.Error(suite.T(), err)
@@ -189,19 +197,21 @@ func (suite *AuthUsecaseTestSuite) TestLogin_Success() {
 	ctx := context.Background()
 	email := "test@example.com"
 	password := "password123"
+	tenantID := "tenant-123" // Added tenantID for consistency
 	token := "jwt-token-456"
 
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user := &model.User{
 		ID:           "user-123",
 		Email:        email,
+		TenantID:     tenantID, // User from DB should have TenantID
 		PasswordHash: string(hashedPassword),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
 
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(user, nil)
-	suite.mockToken.On("GenerateToken", ctx, user.ID, email).Return(token, nil)
+	suite.mockToken.On("GenerateToken", ctx, user.ID, email, tenantID).Return(token, nil) // Added tenantID
 
 	// Act
 	resultUser, resultToken, err := suite.usecase.Login(ctx, email, password)
@@ -439,14 +449,14 @@ func BenchmarkRegister(b *testing.B) {
 	uc := usecase.NewAuthUsecase(mockRepo, mockToken, cfg)
 
 	mockRepo.On("GetUserByEmail", mock.Anything, mock.Anything).Return(nil, usecase.ErrUserNotFound)
-	mockRepo.On("CreateUser", mock.Anything, mock.Anything).Return(nil)
-	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything).Return("token", nil)
+	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *model.User) bool { return u.TenantID == "bench-tenant" })).Return(nil)
+	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant").Return("token", nil)
 
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		uc.Register(ctx, "test@example.com", "password123")
+		uc.Register(ctx, "test@example.com", "password123", "bench-tenant")
 	}
 }
 
@@ -464,11 +474,12 @@ func BenchmarkLogin(b *testing.B) {
 	user := &model.User{
 		ID:           "user-123",
 		Email:        "test@example.com",
+		TenantID:     "bench-tenant", // User from DB should have TenantID
 		PasswordHash: string(hashedPassword),
 	}
 
 	mockRepo.On("GetUserByEmail", mock.Anything, mock.Anything).Return(user, nil)
-	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything).Return("token", nil)
+	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant").Return("token", nil)
 
 	ctx := context.Background()
 

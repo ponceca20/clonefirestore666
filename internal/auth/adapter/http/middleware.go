@@ -1,9 +1,11 @@
 package http
 
 import (
+	"context" // Added context
 	"strings"
 
 	"firestore-clone/internal/auth/usecase"
+	"firestore-clone/internal/shared/contextkeys" // Added contextkeys
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -45,9 +47,14 @@ func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 		}
 
 		// Store user info in context for downstream handlers
-		c.Locals("user_id", claims.UserID)
-		c.Locals("user_email", claims.Email)
-		c.Locals("token", token)
+		c.Locals("user_id", claims.UserID) // Keep for now, might be used by other parts
+		c.Locals("user_email", claims.Email) // Keep for now
+		c.Locals("token", token)           // Keep for now
+
+		// Store TenantID in request context
+		reqCtx := c.UserContext()
+		newCtx := context.WithValue(reqCtx, contextkeys.TenantIDKey, claims.TenantID)
+		c.SetUserContext(newCtx)
 
 		return c.Next()
 	}
@@ -63,10 +70,15 @@ func (m *AuthMiddleware) OptionalAuth() fiber.Handler {
 			claims, err := m.usecase.ValidateToken(c.Context(), token)
 			if err == nil {
 				// Store user info in context if token is valid
-				c.Locals("user_id", claims.UserID)
-				c.Locals("user_email", claims.Email)
-				c.Locals("token", token)
+				c.Locals("user_id", claims.UserID)    // Keep for now
+				c.Locals("user_email", claims.Email)  // Keep for now
+				c.Locals("token", token)              // Keep for now
 				c.Locals("authenticated", true)
+
+				// Store TenantID in request context
+				reqCtx := c.UserContext()
+				newCtx := context.WithValue(reqCtx, contextkeys.TenantIDKey, claims.TenantID)
+				c.SetUserContext(newCtx)
 			} else {
 				c.Locals("authenticated", false)
 			}
@@ -101,6 +113,12 @@ func GetUserEmail(c *fiber.Ctx) (string, bool) {
 	email, ok := c.Locals("user_email").(string)
 	return email, ok
 }
+
+// GetTenantID helper function to get tenant ID from context -- REMOVED
+// func GetTenantID(c *fiber.Ctx) (string, bool) {
+// 	tenantID, ok := c.Locals("tenantID").(string)
+// 	return tenantID, ok
+// }
 
 // IsAuthenticated helper function to check if user is authenticated
 func IsAuthenticated(c *fiber.Ctx) bool {

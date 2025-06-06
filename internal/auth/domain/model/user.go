@@ -11,6 +11,7 @@ type User struct {
 	ID           string             `json:"id" bson:"id,omitempty"`
 	ObjectID     primitive.ObjectID `json:"-" bson:"_id,omitempty"`
 	Email        string             `json:"email" bson:"email"`
+	TenantID     string             `json:"tenantID,omitempty" bson:"tenantID,omitempty"`
 	PasswordHash string             `json:"-" bson:"password_hash"`
 	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`

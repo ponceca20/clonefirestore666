@@ -25,6 +25,8 @@ type RealtimeConfig struct {
 
 // FirestoreConfig holds all configuration for the Firestore module.
 type FirestoreConfig struct {
+	MongoDBURI          string `env:"MONGODB_URI"`
+	DefaultDatabaseName string `env:"MONGODB_DEFAULT_DATABASE" envDefault:"firestore_default"`
 	// DatabaseURL string `env:"DATABASE_URL" mapstructure:"database_url" json:"database_url"` // Example
 	// Port string `env:"PORT" envDefault:"8080" mapstructure:"port" json:"port"` // Example
 	Realtime RealtimeConfig `mapstructure:"realtime" json:"realtime"`
@@ -35,12 +37,21 @@ type FirestoreConfig struct {
 func LoadConfig() (*FirestoreConfig, error) {
 	cfg := &FirestoreConfig{}
 
-	// Load RealtimeConfig from environment variables
+	// Load root FirestoreConfig fields from environment variables
+	if err := env.Parse(cfg); err != nil {
+		return nil, errors.New("failed to load root firestore configuration from environment: " + err.Error())
+	}
+
+	// Load nested RealtimeConfig from environment variables
 	if err := env.Parse(&cfg.Realtime); err != nil {
 		return nil, errors.New("failed to load firestore realtime configuration from environment: " + err.Error())
 	}
 
 	// Validate configuration
+	if cfg.MongoDBURI == "" {
+		// MONGODB_URI is critical, return an error if not set
+		return nil, errors.New("MONGODB_URI environment variable is not set")
+	}
 	if cfg.Realtime.WebSocketPath == "" {
 		cfg.Realtime.WebSocketPath = "/ws/v1/listen"
 	}
@@ -54,6 +65,8 @@ func LoadConfig() (*FirestoreConfig, error) {
 // DefaultFirestoreConfig returns a FirestoreConfig with default values.
 func DefaultFirestoreConfig() *FirestoreConfig {
 	return &FirestoreConfig{
+		MongoDBURI:          "mongodb://localhost:27017", // Default for local development
+		DefaultDatabaseName: "firestore_default",
 		Realtime: RealtimeConfig{
 			WebSocketPath:           "/ws/v1/listen", // Default path
 			ClientSendChannelBuffer: 10,              // Default buffer size

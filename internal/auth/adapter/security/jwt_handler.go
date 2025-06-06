@@ -44,11 +44,12 @@ func NewJWTokenService(cfg *config.Config) (*JWTokenService, error) {
 }
 
 // GenerateToken generates a new JWT token for the given user
-func (s *JWTokenService) GenerateToken(ctx context.Context, userID, email string) (string, error) {
+func (s *JWTokenService) GenerateToken(ctx context.Context, userID, email, tenantID string) (string, error) {
 	now := time.Now()
 	claims := &repository.Claims{
-		UserID: userID,
-		Email:  email,
+		UserID:   userID,
+		Email:    email,
+		TenantID: tenantID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.ttl)),
 			IssuedAt:  jwt.NewNumericDate(now),

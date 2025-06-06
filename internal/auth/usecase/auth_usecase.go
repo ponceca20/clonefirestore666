@@ -25,7 +25,7 @@ var (
 
 // AuthUsecaseInterface defines the contract for authentication use cases.
 type AuthUsecaseInterface interface {
-	Register(ctx context.Context, email, password string) (*model.User, string, error)
+	Register(ctx context.Context, email, password, tenantID string) (*model.User, string, error) // Added tenantID
 	Login(ctx context.Context, email, password string) (*model.User, string, error)
 	Logout(ctx context.Context, tokenString string) error
 	ValidateToken(ctx context.Context, tokenString string) (*repository.Claims, error)
@@ -56,7 +56,7 @@ func NewAuthUsecase(
 }
 
 // Register creates a new user, hashes their password, and returns the user and a JWT.
-func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (*model.User, string, error) {
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, tenantID string) (*model.User, string, error) { // Added tenantID
 	// Validate email format
 	if !emailRegex.MatchString(email) {
 		return nil, "", ErrInvalidEmailFormat
@@ -81,6 +81,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (*m
 	user := &model.User{
 		ID:           uuid.New().String(),
 		Email:        email,
+		TenantID:     tenantID, // Set TenantID
 		PasswordHash: string(hashedPassword),
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
@@ -91,8 +92,8 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password string) (*m
 		return nil, "", err
 	}
 
-	// Generate token
-	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, email)
+	// Generate token, now including TenantID
+	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, user.Email, user.TenantID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -117,8 +118,9 @@ func (uc *AuthUsecase) Login(ctx context.Context, email, password string) (*mode
 		return nil, "", ErrInvalidCredentials
 	}
 
-	// Generate token
-	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, email)
+	// Generate token, now including TenantID
+	// user object retrieved from GetUserByEmail should have TenantID populated
+	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, user.Email, user.TenantID)
 	if err != nil {
 		return nil, "", err
 	}
