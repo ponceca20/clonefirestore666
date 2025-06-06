@@ -16,8 +16,11 @@ import (
 
 // RegisterRequest defines the structure for user registration.
 type RegisterRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required,min=8"`
+	Email     string `json:"email" validate:"required,email"`
+	Password  string `json:"password" validate:"required,min=8"`
+	FirstName string `json:"firstName" validate:"required"`
+	LastName  string `json:"lastName" validate:"required"`
+	AvatarURL string `json:"avatarUrl,omitempty" validate:"omitempty,url"` // omitempty for request, url validation if provided
 }
 
 // LoginRequest defines the structure for user login.
@@ -30,6 +33,9 @@ type LoginRequest struct {
 type UserResponse struct {
 	ID        string    `json:"id"`
 	Email     string    `json:"email"`
+	FirstName string    `json:"firstName,omitempty"`
+	LastName  string    `json:"lastName,omitempty"`
+	AvatarURL string    `json:"avatarUrl,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -139,7 +145,10 @@ func (h *AuthHTTPHandler) Register(c *fiber.Ctx) error {
 		return h.sendValidationErrorResponse(c, err)
 	}
 
-	user, token, err := h.usecase.Register(c.Context(), req.Email, req.Password)
+	// Assuming tenantID is handled or empty for now. The "" for tenantID is a placeholder.
+	// This needs to be correctly sourced if multi-tenancy is fully active at this endpoint.
+	// For this task, we'll assume it's either not required at this specific registration point or will be handled by a later step/context.
+	user, token, err := h.usecase.Register(c.Context(), req.Email, req.Password, "", req.FirstName, req.LastName, req.AvatarURL)
 	if err != nil {
 		return h.mapAuthErrorToFiberError(c, err)
 	}
@@ -263,6 +272,9 @@ func (h *AuthHTTPHandler) modelUserToUserResponse(user *model.User) UserResponse
 	return UserResponse{
 		ID:        user.ID,
 		Email:     user.Email,
+		FirstName: user.FirstName,
+		LastName:  user.LastName,
+		AvatarURL: user.AvatarURL,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 	}

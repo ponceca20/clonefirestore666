@@ -100,7 +100,7 @@ func (r *MongoAuthRepository) CreateUser(ctx context.Context, user *model.User) 
 			"password_hash": user.PasswordHash,
 			"created_at":    user.CreatedAt,
 			"updated_at":    user.UpdatedAt,
-			// tenantID will be added below
+			// tenantID, firstName, lastName, avatarUrl will be added below
 		}
 	} else {
 		// If the ID is not a valid ObjectID (like UUID), store it as a string in id field
@@ -110,12 +110,22 @@ func (r *MongoAuthRepository) CreateUser(ctx context.Context, user *model.User) 
 			"password_hash": user.PasswordHash,
 			"created_at":    user.CreatedAt,
 			"updated_at":    user.UpdatedAt,
-			// tenantID will be added below
+			// tenantID, firstName, lastName, avatarUrl will be added below
 		}
 	}
 	// Add tenantID if it's not empty
 	if user.TenantID != "" {
 		doc["tenantID"] = user.TenantID
+	}
+	// Add new fields if they are not empty
+	if user.FirstName != "" {
+		doc["firstName"] = user.FirstName
+	}
+	if user.LastName != "" {
+		doc["lastName"] = user.LastName
+	}
+	if user.AvatarURL != "" {
+		doc["avatarUrl"] = user.AvatarURL
 	}
 
 	_, err := r.usersCollection.InsertOne(ctx, doc)

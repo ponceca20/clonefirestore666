@@ -25,7 +25,7 @@ var (
 
 // AuthUsecaseInterface defines the contract for authentication use cases.
 type AuthUsecaseInterface interface {
-	Register(ctx context.Context, email, password, tenantID string) (*model.User, string, error) // Added tenantID
+	Register(ctx context.Context, email, password, tenantID, firstName, lastName, avatarURL string) (*model.User, string, error) // Added tenantID
 	Login(ctx context.Context, email, password string) (*model.User, string, error)
 	Logout(ctx context.Context, tokenString string) error
 	ValidateToken(ctx context.Context, tokenString string) (*repository.Claims, error)
@@ -56,7 +56,7 @@ func NewAuthUsecase(
 }
 
 // Register creates a new user, hashes their password, and returns the user and a JWT.
-func (uc *AuthUsecase) Register(ctx context.Context, email, password, tenantID string) (*model.User, string, error) { // Added tenantID
+func (uc *AuthUsecase) Register(ctx context.Context, email, password, tenantID, firstName, lastName, avatarURL string) (*model.User, string, error) { // Added tenantID
 	// Validate email format
 	if !emailRegex.MatchString(email) {
 		return nil, "", ErrInvalidEmailFormat
@@ -83,6 +83,9 @@ func (uc *AuthUsecase) Register(ctx context.Context, email, password, tenantID s
 		Email:        email,
 		TenantID:     tenantID, // Set TenantID
 		PasswordHash: string(hashedPassword),
+		FirstName:    firstName,
+		LastName:     lastName,
+		AvatarURL:    avatarURL,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}

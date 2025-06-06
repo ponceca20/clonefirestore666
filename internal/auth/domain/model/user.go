@@ -13,6 +13,9 @@ type User struct {
 	Email        string             `json:"email" bson:"email"`
 	TenantID     string             `json:"tenantID,omitempty" bson:"tenantID,omitempty"`
 	PasswordHash string             `json:"-" bson:"password_hash"`
+	FirstName    string             `json:"firstName,omitempty" bson:"firstName,omitempty"`
+	LastName     string             `json:"lastName,omitempty" bson:"lastName,omitempty"`
+	AvatarURL    string             `json:"avatarUrl,omitempty" bson:"avatarUrl,omitempty"`
 	CreatedAt    time.Time          `json:"created_at" bson:"created_at"`
 	UpdatedAt    time.Time          `json:"updated_at" bson:"updated_at"`
 }

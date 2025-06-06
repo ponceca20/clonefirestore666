@@ -106,23 +106,29 @@ func (suite *AuthUsecaseTestSuite) TestRegister_Success() {
 	email := "test@example.com"
 	password := "password123"
 	tenantID := "tenant-123" // Added tenantID
+	firstName := "TestFirst"
+	lastName := "TestLast"
+	avatarURL := "http://example.com/avatar.png"
 	token := "jwt-token-123"
 
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(nil, usecase.ErrUserNotFound)
-	// Expect CreateUser to be called with a user object that includes the tenantID
+	// Expect CreateUser to be called with a user object that includes the tenantID, firstName, lastName, avatarURL
 	suite.mockRepo.On("CreateUser", ctx, mock.MatchedBy(func(user *model.User) bool {
-		return user.Email == email && user.TenantID == tenantID
+		return user.Email == email && user.TenantID == tenantID && user.FirstName == firstName && user.LastName == lastName && user.AvatarURL == avatarURL
 	})).Return(nil)
 	suite.mockToken.On("GenerateToken", ctx, mock.AnythingOfType("string"), email, tenantID).Return(token, nil) // Added tenantID
 
 	// Act
-	user, resultToken, err := suite.usecase.Register(ctx, email, password, tenantID) // Added tenantID
+	user, resultToken, err := suite.usecase.Register(ctx, email, password, tenantID, firstName, lastName, avatarURL) // Added tenantID and new fields
 
 	// Assert
 	require.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), user)
 	assert.Equal(suite.T(), email, user.Email)
 	assert.Equal(suite.T(), tenantID, user.TenantID) // Assert TenantID on returned user
+	assert.Equal(suite.T(), firstName, user.FirstName)
+	assert.Equal(suite.T(), lastName, user.LastName)
+	assert.Equal(suite.T(), avatarURL, user.AvatarURL)
 	assert.Equal(suite.T(), token, resultToken)
 	assert.NotEmpty(suite.T(), user.PasswordHash)
 	assert.NotEqual(suite.T(), password, user.PasswordHash) // Password should be hashed
@@ -141,6 +147,9 @@ func (suite *AuthUsecaseTestSuite) TestRegister_EmailAlreadyTaken() {
 	email := "existing@example.com"
 	password := "password123"
 	tenantID := "tenant-456" // Added tenantID
+	firstNamePlaceholder := "first"
+	lastNamePlaceholder := "last"
+	avatarURLPlaceholder := "url"
 
 	existingUser := &model.User{
 		ID:    "existing-user-id",
@@ -152,7 +161,7 @@ func (suite *AuthUsecaseTestSuite) TestRegister_EmailAlreadyTaken() {
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(existingUser, nil)
 
 	// Act
-	user, token, err := suite.usecase.Register(ctx, email, password, tenantID) // Added tenantID
+	user, token, err := suite.usecase.Register(ctx, email, password, tenantID, firstNamePlaceholder, lastNamePlaceholder, avatarURLPlaceholder) // Added tenantID and new fields
 
 	// Assert
 	assert.Error(suite.T(), err)
@@ -178,7 +187,7 @@ func (suite *AuthUsecaseTestSuite) TestRegister_InvalidEmailFormat() {
 	for _, email := range invalidEmails {
 		suite.Run("invalid_email_"+email, func() {
 			// Act
-			user, token, err := suite.usecase.Register(ctx, email, "password123", "tenant-789") // Added tenantID
+			user, token, err := suite.usecase.Register(ctx, email, "password123", "tenant-789", "first", "last", "url") // Added tenantID and new fields
 
 			// Assert
 			assert.Error(suite.T(), err)
@@ -449,14 +458,16 @@ func BenchmarkRegister(b *testing.B) {
 	uc := usecase.NewAuthUsecase(mockRepo, mockToken, cfg)
 
 	mockRepo.On("GetUserByEmail", mock.Anything, mock.Anything).Return(nil, usecase.ErrUserNotFound)
-	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *model.User) bool { return u.TenantID == "bench-tenant" })).Return(nil)
+	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *model.User) bool {
+		return u.TenantID == "bench-tenant" && u.FirstName == "BenchFirst" && u.LastName == "BenchLast" && u.AvatarURL == "bench.url"
+	})).Return(nil)
 	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant").Return("token", nil)
 
 	ctx := context.Background()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		uc.Register(ctx, "test@example.com", "password123", "bench-tenant")
+		uc.Register(ctx, "test@example.com", "password123", "bench-tenant", "BenchFirst", "BenchLast", "bench.url")
 	}
 }
 
