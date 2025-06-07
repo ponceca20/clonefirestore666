@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"firestore-clone/internal/auth"
+	"firestore-clone/internal/auth/config"
 	"firestore-clone/internal/firestore"
 	"firestore-clone/internal/firestore/adapter/auth_client"
 	"firestore-clone/internal/shared/logger"
@@ -14,6 +18,8 @@ import (
 	"github.com/caarlos0/env/v6"
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // ServerConfig holds server configuration
@@ -63,6 +69,29 @@ func main() {
 	}
 	defer firestoreModule.Stop() // Ensure graceful shutdown
 
+	// Initialize MongoDB connection
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(os.Getenv("MONGODB_URI")))
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+	defer mongoClient.Disconnect(ctx)
+
+	// Load auth configuration
+	authConfig, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load auth configuration: %v", err)
+	}
+
+	// Initialize Auth Module with MongoDB
+	authModule, err := auth.NewAuthModule(mongoClient.Database(authConfig.DatabaseName), authConfig)
+	if err != nil {
+		log.Fatalf("Failed to initialize Auth module: %v", err)
+	}
+	defer authModule.Stop()
+
 	// Setup HTTP server (Fiber)
 	app := fiber.New(fiber.Config{
 		AppName: "Firestore Clone API v1.0",
@@ -77,7 +106,7 @@ func main() {
 	})
 
 	// Register module routes
-	// authModule.RegisterRoutes(app)
+	authModule.RegisterRoutes(app) // Registrar las rutas de autenticación
 	firestoreModule.RegisterRoutes(app)
 	firestoreModule.StartRealtimeServices() // If it has any background services for WebSockets
 
