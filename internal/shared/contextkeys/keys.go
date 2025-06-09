@@ -9,11 +9,25 @@ func (c contextKey) String() string {
 	return "firestore-clone context key " + string(c)
 }
 
-// TenantIDKey is the key for TenantID in context.Context
-const TenantIDKey = contextKey("tenantID")
+// Context keys for Firestore clone application
+const (
+	// User-related context keys
+	UserIDKey    = contextKey("userID")
+	UserEmailKey = contextKey("userEmail")
+	TenantIDKey  = contextKey("tenantID")
 
-// UserIDKey is the key for UserID in context.Context (example, might be useful)
-// const UserIDKey = contextKey("userID")
+	// Request-related context keys
+	RequestIDKey = contextKey("requestID")
 
-// UserEmailKey is the key for UserEmail in context.Context (example, might be useful)
-// const UserEmailKey = contextKey("userEmail")
+	// Firestore-specific context keys
+	ProjectIDKey  = contextKey("projectID")
+	DatabaseIDKey = contextKey("databaseID")
+
+	// Authentication context keys
+	TokenKey  = contextKey("token")
+	ClaimsKey = contextKey("claims")
+
+	// Component context keys
+	ComponentKey = contextKey("component")
+	OperationKey = contextKey("operation")
+)

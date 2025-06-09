@@ -6,33 +6,89 @@ import (
 	"reflect"
 	"sync"
 
+	"firestore-clone/internal/auth"
+	"firestore-clone/internal/auth/config"
 	"firestore-clone/internal/firestore"
 	authClientAdapter "firestore-clone/internal/firestore/adapter/auth_client"
 	"firestore-clone/internal/shared/logger"
+
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// Container represents a dependency injection container
+// Container represents a dependency injection container with proper lifecycle management
 type Container struct {
 	mu        sync.RWMutex
 	services  map[reflect.Type]interface{}
 	factories map[reflect.Type]func() (interface{}, error)
-	// Firestore Module Components
-	// FirestoreRepository firestoreDomainRepo.FirestoreRepository
-	// QueryEngine firestoreDomainRepo.QueryEngine
-	// SecurityRulesEngine firestoreDomainRepo.SecurityRulesEngine
-	// FirestoreAuthClient firestoreDomainRepo.AuthClient // The client Firestore uses to talk to Auth
-	// FirestoreUsecase firestoreUseCase.FirestoreUsecase
-	// RealtimeUsecase firestoreUseCase.RealtimeUsecase
-	// SecurityUsecase firestoreUseCase.SecurityUsecase
+	// Module instances
+	AuthModule      *auth.AuthModule
 	FirestoreModule *firestore.FirestoreModule
+	// Database connections
+	MongoDB *mongo.Database
+	// Configuration
+	AuthConfig *config.Config
+	// Logger
+	Logger logger.Logger
 }
 
-// NewContainer creates a new DI container
+// NewContainer creates a new DI container with Firestore-compatible service initialization
 func NewContainer() *Container {
 	return &Container{
 		services:  make(map[reflect.Type]interface{}),
 		factories: make(map[reflect.Type]func() (interface{}, error)),
 	}
+}
+
+// InitializeAuth initializes the authentication module with proper Firestore project support
+func (c *Container) InitializeAuth(mongoDB *mongo.Database, authConfig *config.Config) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// Store references
+	c.MongoDB = mongoDB
+	c.AuthConfig = authConfig
+
+	// Initialize auth module with Firestore project support
+	authModule, err := auth.NewAuthModule(mongoDB, authConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create auth module: %w", err)
+	}
+
+	c.AuthModule = authModule
+	return nil
+}
+
+// InitializeFirestore initializes the Firestore module with auth integration
+func (c *Container) InitializeFirestore() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.AuthModule == nil {
+		return fmt.Errorf("auth module must be initialized before Firestore module")
+	}
+
+	// Check if MongoDB is initialized
+	if c.MongoDB == nil {
+		return fmt.Errorf("MongoDB must be initialized before Firestore module")
+	}
+
+	// Initialize logger if not already initialized
+	if c.Logger == nil {
+		c.Logger = logger.NewLogger()
+	}
+
+	// Create integrated auth client using the auth module
+	authUsecase := c.AuthModule.GetUsecase()
+	tokenSvc := c.AuthModule.GetTokenService()
+	authClient := authClientAdapter.NewAuthClientAdapter(authUsecase, tokenSvc)
+
+	// Initialize Firestore module with auth integration
+	firestoreModule, err := firestore.NewFirestoreModule(authClient, c.Logger, c.MongoDB)
+	if err != nil {
+		return fmt.Errorf("failed to create Firestore module: %w", err)
+	}
+
+	c.FirestoreModule = firestoreModule
+	return nil
 }
 
 // Register registers a service instance
@@ -130,15 +186,70 @@ func GetService[T any](c *Container) (T, error) {
 	return zero, fmt.Errorf("service is not of expected type %T", zero)
 }
 
-// Cleanup performs cleanup of registered services
+// GetAuthModule returns the auth module instance
+func (c *Container) GetAuthModule() *auth.AuthModule {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.AuthModule
+}
+
+// GetFirestoreModule returns the Firestore module instance
+func (c *Container) GetFirestoreModule() *firestore.FirestoreModule {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.FirestoreModule
+}
+
+// HealthCheck performs health check on all registered services
+func (c *Container) HealthCheck(ctx context.Context) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Check MongoDB connection
+	if c.MongoDB != nil {
+		if err := c.MongoDB.Client().Ping(ctx, nil); err != nil {
+			return fmt.Errorf("MongoDB health check failed: %w", err)
+		}
+	}
+
+	// Check auth module health
+	if c.AuthModule != nil {
+		// Auth module health check would go here
+		// For now, we assume it's healthy if it's initialized
+	}
+
+	// Check Firestore module health
+	if c.FirestoreModule != nil {
+		// Firestore module health check would go here
+		// For now, we assume it's healthy if it's initialized
+	}
+
+	return nil
+}
+
+// Cleanup performs cleanup of registered services with proper shutdown order
 func (c *Container) Cleanup(ctx context.Context) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	var errors []error
+
+	// Cleanup modules in reverse order of initialization
+	if c.FirestoreModule != nil {
+		c.FirestoreModule.Stop()
+		c.FirestoreModule = nil
+	}
+
+	if c.AuthModule != nil {
+		c.AuthModule.Stop()
+		c.AuthModule = nil
+	}
+
+	// Cleanup generic services
 	for _, service := range c.services {
 		if cleaner, ok := service.(interface{ Cleanup(context.Context) error }); ok {
 			if err := cleaner.Cleanup(ctx); err != nil {
-				return fmt.Errorf("failed to cleanup service: %w", err)
+				errors = append(errors, fmt.Errorf("failed to cleanup service: %w", err))
 			}
 		}
 	}
@@ -147,30 +258,30 @@ func (c *Container) Cleanup(ctx context.Context) error {
 	c.services = make(map[reflect.Type]interface{})
 	c.factories = make(map[reflect.Type]func() (interface{}, error))
 
-	return nil
-}
-
-// NewFirestoreModule initializes the Firestore module components.
-func (c *Container) NewFirestoreModule() error {
-	authClient := authClientAdapter.NewSimpleAuthClient()
-	log := logger.NewDefaultLogger()
-
-	fm, err := firestore.NewFirestoreModule(authClient, log)
-	if err != nil {
-		return fmt.Errorf("failed to create Firestore module: %w", err)
+	// Return combined errors if any
+	if len(errors) > 0 {
+		return fmt.Errorf("cleanup errors: %v", errors)
 	}
-	c.FirestoreModule = fm
 
 	return nil
 }
 
-// Close gracefully shuts down all services in the container.
+// NewFirestoreModule initializes the Firestore module components (deprecated - use InitializeFirestore)
+func (c *Container) NewFirestoreModule() error {
+	return c.InitializeFirestore()
+}
+
+// Close gracefully shuts down all services in the container with timeout
 func (c *Container) Close() error {
 	fmt.Println("Closing DI Container resources...")
-	// Call Stop() on modules if they have cleanup tasks
-	if c.FirestoreModule != nil {
-		c.FirestoreModule.Stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*1000000000) // 30 seconds
+	defer cancel()
+
+	if err := c.Cleanup(ctx); err != nil {
+		fmt.Printf("Warning: cleanup errors occurred: %v\n", err)
 	}
+
 	fmt.Println("DI Container resources closed.")
 	return nil
 }

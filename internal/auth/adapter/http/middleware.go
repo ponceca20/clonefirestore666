@@ -1,13 +1,18 @@
 package http
 
 import (
-	"context" // Added context
+	"context"
+	"regexp"
 	"strings"
+	"time"
 
 	"firestore-clone/internal/auth/usecase"
-	"firestore-clone/internal/shared/contextkeys" // Added contextkeys
+	"firestore-clone/internal/shared/contextkeys"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
 // AuthMiddleware provides authentication middleware for Fiber
@@ -24,66 +29,166 @@ func NewAuthMiddleware(uc usecase.AuthUsecaseInterface, cookieName string) *Auth
 	}
 }
 
-// RequireAuth middleware that requires authentication
+// FirestorePathParser extracts PROJECT_ID and DATABASE_ID from Firestore paths
+type FirestorePathParser struct {
+	projectRegex  *regexp.Regexp
+	databaseRegex *regexp.Regexp
+}
+
+// NewFirestorePathParser creates a new Firestore path parser
+func NewFirestorePathParser() *FirestorePathParser {
+	return &FirestorePathParser{
+		projectRegex:  regexp.MustCompile(`/projects/([^/]+)`),
+		databaseRegex: regexp.MustCompile(`/databases/([^/]+)`),
+	}
+}
+
+// ExtractFirestoreContext extracts Firestore context from path
+func (p *FirestorePathParser) ExtractFirestoreContext(path string) (projectID, databaseID string) {
+	if matches := p.projectRegex.FindStringSubmatch(path); len(matches) > 1 {
+		projectID = matches[1]
+	}
+	if matches := p.databaseRegex.FindStringSubmatch(path); len(matches) > 1 {
+		databaseID = matches[1]
+	}
+	return projectID, databaseID
+}
+
+// CORS middleware with security headers
+func (m *AuthMiddleware) CORS() fiber.Handler {
+	return cors.New(cors.Config{
+		AllowOrigins:     "http://localhost:3000,http://localhost:3001,https://your-domain.com",
+		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Requested-With",
+		AllowCredentials: true,
+		MaxAge:           86400, // 24 hours
+	})
+}
+
+// SecurityHeaders adds security headers
+func (m *AuthMiddleware) SecurityHeaders() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Set("X-Content-Type-Options", "nosniff")
+		c.Set("X-Frame-Options", "DENY")
+		c.Set("X-XSS-Protection", "1; mode=block")
+		c.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		return c.Next()
+	}
+}
+
+// RateLimiter creates rate limiting middleware for auth endpoints
+func (m *AuthMiddleware) RateLimiter() fiber.Handler {
+	return limiter.New(limiter.Config{
+		Max:               10,              // 10 requests
+		Expiration:        1 * time.Minute, // per minute
+		LimiterMiddleware: limiter.SlidingWindow{},
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.Get("X-Forwarded-For", c.IP())
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{
+				"error": "Rate limit exceeded. Please try again later.",
+			})
+		},
+	})
+}
+
+// RequestID middleware
+func (m *AuthMiddleware) RequestID() fiber.Handler {
+	return requestid.New(requestid.Config{
+		Header:     "X-Request-ID",
+		ContextKey: string(contextkeys.RequestIDKey),
+	})
+}
+
+// RequireAuth middleware that requires authentication with Firestore context injection
 func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := m.extractToken(c)
 		if token == "" {
-			return c.Status(fiber.StatusUnauthorized).JSON(ErrorResponse{
-				Error:   "Authentication required",
-				Message: "No authentication token provided",
-				Code:    fiber.StatusUnauthorized,
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Authorization token required",
 			})
 		}
 
 		// Validate token
 		claims, err := m.usecase.ValidateToken(c.Context(), token)
 		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(ErrorResponse{
-				Error:   "Invalid token",
-				Message: "The provided authentication token is invalid or expired",
-				Code:    fiber.StatusUnauthorized,
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
 			})
 		}
 
-		// Store user info in context for downstream handlers
-		c.Locals("user_id", claims.UserID) // Keep for now, might be used by other parts
-		c.Locals("user_email", claims.Email) // Keep for now
-		c.Locals("token", token)           // Keep for now
+		// Extract Firestore context from path
+		parser := NewFirestorePathParser()
+		pathProjectID, pathDatabaseID := parser.ExtractFirestoreContext(c.Path())
 
-		// Store TenantID in request context
-		reqCtx := c.UserContext()
-		newCtx := context.WithValue(reqCtx, contextkeys.TenantIDKey, claims.TenantID)
-		c.SetUserContext(newCtx)
+		// Verify token project/database matches path context
+		if pathProjectID != "" && claims.ProjectID != pathProjectID {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Project access denied",
+			})
+		}
+		if pathDatabaseID != "" && claims.DatabaseID != pathDatabaseID {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Database access denied",
+			})
+		}
+		// Inject context values
+		ctx := c.UserContext()
+		ctx = context.WithValue(ctx, contextkeys.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, contextkeys.TenantIDKey, claims.TenantID)
+		ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, claims.ProjectID)
+		ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, claims.DatabaseID)
+
+		// Update Fiber context
+		c.SetUserContext(ctx)
 
 		return c.Next()
 	}
 }
 
 // OptionalAuth middleware that optionally validates authentication
-// Does not block if no token is provided, but validates if present
 func (m *AuthMiddleware) OptionalAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		token := m.extractToken(c)
-		if token != "" {
-			// Validate token if present
-			claims, err := m.usecase.ValidateToken(c.Context(), token)
-			if err == nil {
-				// Store user info in context if token is valid
-				c.Locals("user_id", claims.UserID)    // Keep for now
-				c.Locals("user_email", claims.Email)  // Keep for now
-				c.Locals("token", token)              // Keep for now
-				c.Locals("authenticated", true)
+		if token == "" {
+			return c.Next() // Continue without authentication
+		}
 
-				// Store TenantID in request context
-				reqCtx := c.UserContext()
-				newCtx := context.WithValue(reqCtx, contextkeys.TenantIDKey, claims.TenantID)
-				c.SetUserContext(newCtx)
-			} else {
-				c.Locals("authenticated", false)
+		// Validate token if present
+		claims, err := m.usecase.ValidateToken(c.Context(), token)
+		if err != nil {
+			// Invalid token, but continue without authentication
+			return c.Next()
+		}
+		// Inject context values if token is valid
+		ctx := c.UserContext()
+		ctx = context.WithValue(ctx, contextkeys.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, contextkeys.TenantIDKey, claims.TenantID)
+		ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, claims.ProjectID)
+		ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, claims.DatabaseID)
+
+		c.SetUserContext(ctx)
+		return c.Next()
+	}
+}
+
+// FirestoreProjectContext middleware injects Firestore project context from path
+func (m *AuthMiddleware) FirestoreProjectContext() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		parser := NewFirestorePathParser()
+		projectID, databaseID := parser.ExtractFirestoreContext(c.Path())
+		if projectID != "" || databaseID != "" {
+			ctx := c.UserContext()
+			if projectID != "" {
+				ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, projectID)
 			}
-		} else {
-			c.Locals("authenticated", false)
+			if databaseID != "" {
+				ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, databaseID)
+			}
+			c.SetUserContext(ctx)
 		}
 
 		return c.Next()

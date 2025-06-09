@@ -22,7 +22,11 @@ func (f *UserFixture) ValidUser() *model.User {
 	return &model.User{
 		ID:           "test-user-id-123",
 		Email:        "test@example.com",
+		ProjectID:    "test-project-123",
+		DatabaseID:   "test-database",
 		PasswordHash: string(hashedPassword),
+		FirstName:    "Test",
+		LastName:     "User",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -34,7 +38,11 @@ func (f *UserFixture) UserWithEmail(email string) *model.User {
 	return &model.User{
 		ID:           "user-" + email,
 		Email:        email,
+		ProjectID:    "test-project-123",
+		DatabaseID:   "test-database",
 		PasswordHash: string(hashedPassword),
+		FirstName:    "Test",
+		LastName:     "User",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}
@@ -46,7 +54,11 @@ func (f *UserFixture) UserWithPassword(email, password string) *model.User {
 	return &model.User{
 		ID:           "user-" + email,
 		Email:        email,
+		ProjectID:    "test-project-123",
+		DatabaseID:   "test-database",
 		PasswordHash: string(hashedPassword),
+		FirstName:    "Test",
+		LastName:     "User",
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
 	}

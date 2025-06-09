@@ -1,522 +1,156 @@
 package http
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"strconv"
-	"strings"
-
-	"firestore-clone/internal/firestore/domain/client"
+	"firestore-clone/internal/firestore/domain/client" // Added import
+	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
-	"firestore-clone/internal/shared/errors"
-	"firestore-clone/internal/shared/logger"
+	"firestore-clone/internal/shared/logger" // Added import
 
 	"github.com/gofiber/fiber/v2"
 )
 
-// FirestoreHTTPHandler handles HTTP requests for Firestore operations
-type FirestoreHTTPHandler struct {
-	firestoreUC usecase.FirestoreUsecase
-	securityUC  usecase.SecurityUsecase
-	authClient  client.AuthClient
-	logger      logger.Logger
+// HTTPHandler handles Firestore REST API endpoints. (Comment updated for clarity)
+// It should be initialized with the Firestore usecase and other dependencies.
+type HTTPHandler struct {
+	FirestoreUC usecase.FirestoreUsecaseInterface // Changed to Interface
+	SecurityUC  usecase.SecurityUsecase
+	RealtimeUC  usecase.RealtimeUsecase
+	AuthClient  client.AuthClient
+	Log         logger.Logger // Field name 'Log' to avoid potential conflicts
 }
 
-// NewFirestoreHTTPHandler creates a new HTTP handler for Firestore
+// NewFirestoreHTTPHandler creates a new HTTPHandler. (Name and signature updated)
 func NewFirestoreHTTPHandler(
-	firestoreUC usecase.FirestoreUsecase,
+	firestoreUC usecase.FirestoreUsecaseInterface,
 	securityUC usecase.SecurityUsecase,
+	realtimeUC usecase.RealtimeUsecase,
 	authClient client.AuthClient,
 	log logger.Logger,
-) *FirestoreHTTPHandler {
-	return &FirestoreHTTPHandler{
-		firestoreUC: firestoreUC,
-		securityUC:  securityUC,
-		authClient:  authClient,
-		logger:      log,
+) *HTTPHandler {
+	return &HTTPHandler{
+		FirestoreUC: firestoreUC,
+		SecurityUC:  securityUC,
+		RealtimeUC:  realtimeUC,
+		AuthClient:  authClient,
+		Log:         log,
 	}
 }
 
-// RegisterRoutes registers all Firestore HTTP routes
-func (h *FirestoreHTTPHandler) RegisterRoutes(app *fiber.App) {
-	api := app.Group("/v1")
-
-	// Document operations
-	api.Get("/documents/*", h.GetDocument)
-	api.Post("/documents/*", h.CreateDocument)
-	api.Patch("/documents/*", h.UpdateDocument)
-	api.Delete("/documents/*", h.DeleteDocument)
-
-	// Collection operations
-	api.Get("/collections/:collectionId/documents", h.ListDocuments)
-
-	h.logger.Info("Firestore HTTP routes registered")
+func (h *HTTPHandler) RegisterRoutes(app *fiber.App) {
+	api := app.Group("/api/v1/firestore")
+	api.Post("/projects/:projectID/databases/:databaseID/documents/:collectionID", h.CreateDocument)
+	api.Get("/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.GetDocument)
+	api.Put("/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.UpdateDocument)
+	api.Delete("/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.DeleteDocument)
+	api.Post("/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 }
 
-// CreateDocumentRequest represents the request body for creating a document
-type CreateDocumentRequest struct {
-	Fields map[string]interface{} `json:"fields"`
-}
+func (h *HTTPHandler) CreateDocument(c *fiber.Ctx) error {
+	projectID := c.Params("projectID")
+	databaseID := c.Params("databaseID")
+	collectionID := c.Params("collectionID")
 
-// UpdateDocumentRequest represents the request body for updating a document
-type UpdateDocumentRequest struct {
-	Fields map[string]interface{} `json:"fields"`
-}
-
-// CreateDocument handles POST requests to create documents
-func (h *FirestoreHTTPHandler) CreateDocument(c *fiber.Ctx) error {
-	ctx := c.Context()
-	projectID := c.Params("projectId")
-	collection := c.Params("collectionId")
-	documentID := c.Params("documentId")
-
-	if projectID == "" || collection == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID and collection are required",
-		})
+	var reqBody map[string]interface{}
+	if err := c.BodyParser(&reqBody); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	var data map[string]interface{}
-	if err := c.BodyParser(&data); err != nil {
-		h.logger.Errorf("Failed to parse request body: %v", err)
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+	req := usecase.CreateDocumentRequest{
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		Data:         reqBody,
 	}
-
-	path := fmt.Sprintf("projects/%s/databases/(default)/documents/%s", projectID, collection)
-	if documentID != "" {
-		path += "/" + documentID
-	}
-
-	// Validate authentication and get user ID
-	var userID string
-	token := h.extractToken(c)
-	if token != "" {
-		uid, err := h.authClient.ValidateToken(ctx, token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authentication token",
-			})
-		}
-		userID = uid
-	}
-
-	// Validate write permission
-	if err := h.securityUC.ValidateWrite(ctx, userID, path, data); err != nil {
-		if err == errors.ErrUnauthorized {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Unauthorized access",
-			})
-		}
-		if err == errors.ErrForbidden {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Forbidden access",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
-	}
-
-	// Create document
-	document, err := h.firestoreUC.CreateDocument(ctx, path, data)
+	doc, err := h.FirestoreUC.CreateDocument(c.Context(), req)
 	if err != nil {
-		if err == errors.ErrConflict {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "Document already exists",
-			})
-		}
-		h.logger.Error("Error creating document", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.Status(http.StatusCreated).JSON(document)
+	return c.Status(fiber.StatusCreated).JSON(doc)
 }
 
-// GetDocument handles GET requests to retrieve documents
-func (h *FirestoreHTTPHandler) GetDocument(c *fiber.Ctx) error {
-	ctx := c.Context()
-	projectID := c.Params("projectId")
-	collection := c.Params("collectionId")
-	documentID := c.Params("documentId")
+func (h *HTTPHandler) GetDocument(c *fiber.Ctx) error {
+	projectID := c.Params("projectID")
+	databaseID := c.Params("databaseID")
+	collectionID := c.Params("collectionID")
+	documentID := c.Params("documentID")
 
-	if projectID == "" || collection == "" || documentID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID, collection, and document ID are required",
-		})
+	req := usecase.GetDocumentRequest{
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		DocumentID:   documentID,
 	}
-
-	path := fmt.Sprintf("projects/%s/databases/(default)/documents/%s/%s", projectID, collection, documentID)
-
-	// Validate authentication and get user ID
-	var userID string
-	token := h.extractToken(c)
-	if token != "" {
-		uid, err := h.authClient.ValidateToken(ctx, token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authentication token",
-			})
-		}
-		userID = uid
-	}
-
-	// Validate read permission
-	if err := h.securityUC.ValidateRead(ctx, userID, path); err != nil {
-		if err == errors.ErrUnauthorized {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Unauthorized access",
-			})
-		}
-		if err == errors.ErrForbidden {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Forbidden access",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
-	}
-
-	// Get document
-	document, err := h.firestoreUC.GetDocument(ctx, path)
+	doc, err := h.FirestoreUC.GetDocument(c.Context(), req)
 	if err != nil {
-		if err == errors.ErrNotFound {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Document not found",
-			})
-		}
-		h.logger.Error("Error getting document", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.JSON(document)
+	return c.JSON(doc)
 }
 
-// UpdateDocument handles PATCH requests to update documents
-func (h *FirestoreHTTPHandler) UpdateDocument(c *fiber.Ctx) error {
-	ctx := c.Context()
-	projectID := c.Params("projectId")
-	collection := c.Params("collectionId")
-	documentID := c.Params("documentId")
+func (h *HTTPHandler) UpdateDocument(c *fiber.Ctx) error {
+	projectID := c.Params("projectID")
+	databaseID := c.Params("databaseID")
+	collectionID := c.Params("collectionID")
+	documentID := c.Params("documentID")
 
-	if projectID == "" || collection == "" || documentID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID, collection, and document ID are required",
-		})
+	var reqBody map[string]interface{}
+	if err := c.BodyParser(&reqBody); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 	}
 
-	var data map[string]interface{}
-	if err := c.BodyParser(&data); err != nil {
-		h.logger.Errorf("Failed to parse request body: %v", err)
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid request body",
-		})
+	req := usecase.UpdateDocumentRequest{
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		DocumentID:   documentID,
+		Data:         reqBody,
 	}
-
-	path := fmt.Sprintf("projects/%s/databases/(default)/documents/%s/%s", projectID, collection, documentID)
-
-	// Validate authentication and get user ID
-	var userID string
-	token := h.extractToken(c)
-	if token != "" {
-		uid, err := h.authClient.ValidateToken(ctx, token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authentication token",
-			})
-		}
-		userID = uid
-	}
-
-	// Validate write permission
-	if err := h.securityUC.ValidateWrite(ctx, userID, path, data); err != nil {
-		if err == errors.ErrUnauthorized {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Unauthorized access",
-			})
-		}
-		if err == errors.ErrForbidden {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Forbidden access",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
-	}
-
-	// Update document
-	document, err := h.firestoreUC.UpdateDocument(ctx, path, data)
+	doc, err := h.FirestoreUC.UpdateDocument(c.Context(), req)
 	if err != nil {
-		if err == errors.ErrNotFound {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Document not found",
-			})
-		}
-		h.logger.Error("Error updating document", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	return c.JSON(document)
+	return c.JSON(doc)
 }
 
-// DeleteDocument handles DELETE requests to delete documents
-func (h *FirestoreHTTPHandler) DeleteDocument(c *fiber.Ctx) error {
-	ctx := c.Context()
-	projectID := c.Params("projectId")
-	collection := c.Params("collectionId")
-	documentID := c.Params("documentId")
+func (h *HTTPHandler) DeleteDocument(c *fiber.Ctx) error {
+	projectID := c.Params("projectID")
+	databaseID := c.Params("databaseID")
+	collectionID := c.Params("collectionID")
+	documentID := c.Params("documentID")
 
-	if projectID == "" || collection == "" || documentID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID, collection, and document ID are required",
-		})
+	req := usecase.DeleteDocumentRequest{
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		DocumentID:   documentID,
 	}
-
-	path := fmt.Sprintf("projects/%s/databases/(default)/documents/%s/%s", projectID, collection, documentID)
-
-	// Validate authentication and get user ID
-	var userID string
-	token := h.extractToken(c)
-	if token != "" {
-		uid, err := h.authClient.ValidateToken(ctx, token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authentication token",
-			})
-		}
-		userID = uid
-	}
-
-	// Validate delete permission
-	if err := h.securityUC.ValidateDelete(ctx, userID, path); err != nil {
-		if err == errors.ErrUnauthorized {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Unauthorized access",
-			})
-		}
-		if err == errors.ErrForbidden {
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error": "Forbidden access",
-			})
-		}
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
-	}
-
-	// Delete document
-	if err := h.firestoreUC.DeleteDocument(ctx, path); err != nil {
-		if err == errors.ErrNotFound {
-			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
-				"error": "Document not found",
-			})
-		}
-		h.logger.Error("Error deleting document", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Internal server error",
-		})
-	}
-
-	return c.SendStatus(http.StatusNoContent)
-}
-
-// ListDocuments handles GET requests to list documents in a collection
-func (h *FirestoreHTTPHandler) ListDocuments(c *fiber.Ctx) error {
-	projectID := c.Params("projectId")
-	collection := c.Params("collectionId")
-
-	if projectID == "" || collection == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID and collection are required",
-		})
-	}
-
-	// Parse query parameters
-	limit := 50 // default limit
-	if limitStr := c.Query("pageSize"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
-			limit = parsedLimit
-		}
-	}
-
-	pageToken := c.Query("pageToken")
-
-	path := fmt.Sprintf("projects/%s/databases/(default)/documents/%s", projectID, collection)
-
-	// Validate authentication and get user ID
-	var userID string
-	token := h.extractToken(c)
-	if token != "" {
-		uid, err := h.authClient.ValidateToken(c.Context(), token)
-		if err != nil {
-			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-				"error": "Invalid authentication token",
-			})
-		}
-		userID = uid
-	}
-
-	// For now, return placeholder response
-	// TODO: Implement proper collection listing with query support
-	_ = userID // Avoid unused variable warning
-	docs, nextPageToken, err := h.firestoreUC.ListDocuments(c.Context(), path, limit, pageToken)
+	err := h.FirestoreUC.DeleteDocument(c.Context(), req)
 	if err != nil {
-		h.logger.Errorf("Failed to list documents: %v", err)
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to list documents",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	response := fiber.Map{
-		"documents": docs,
-	}
-
-	if nextPageToken != "" {
-		response["nextPageToken"] = nextPageToken
-	}
-
-	return c.JSON(response)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// RunQuery handles POST requests to run structured queries
-func (h *FirestoreHTTPHandler) RunQuery(c *fiber.Ctx) error {
-	projectID := c.Params("projectId")
+func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
+	projectID := c.Params("projectID")
+	databaseID := c.Params("databaseID")
+	collectionID := c.Params("collectionID")
 
-	if projectID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID is required",
-		})
+	var query model.Query
+	if err := c.BodyParser(&query); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid query body"})
 	}
 
-	var queryReq map[string]interface{}
-	if err := c.BodyParser(&queryReq); err != nil {
-		h.logger.Errorf("Failed to parse query request: %v", err)
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid query request",
-		})
+	req := usecase.QueryRequest{
+		ProjectID:       projectID,
+		DatabaseID:      databaseID,
+		StructuredQuery: &query,
+		Parent:          "projects/" + projectID + "/databases/" + databaseID + "/documents/" + collectionID,
 	}
 
-	// Convert query request to JSON for processing
-	queryBytes, err := json.Marshal(queryReq)
+	results, err := h.FirestoreUC.RunQuery(c.Context(), req)
 	if err != nil {
-		h.logger.Errorf("Failed to marshal query: %v", err)
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid query format",
-		})
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
-
-	docs, err := h.firestoreUC.RunQuery(c.Context(), projectID, string(queryBytes))
-	if err != nil {
-		h.logger.Errorf("Failed to run query: %v", err)
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to execute query",
-		})
-	}
-
-	return c.JSON(fiber.Map{
-		"documents": docs,
-	})
-}
-
-// BeginTransaction handles POST requests to begin transactions
-func (h *FirestoreHTTPHandler) BeginTransaction(c *fiber.Ctx) error {
-	projectID := c.Params("projectId")
-
-	if projectID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID is required",
-		})
-	}
-
-	transactionID, err := h.firestoreUC.BeginTransaction(c.Context(), projectID)
-	if err != nil {
-		h.logger.Errorf("Failed to begin transaction: %v", err)
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to begin transaction",
-		})
-	}
-
-	return c.JSON(fiber.Map{
-		"transaction": transactionID,
-	})
-}
-
-// CommitTransaction handles POST requests to commit transactions
-func (h *FirestoreHTTPHandler) CommitTransaction(c *fiber.Ctx) error {
-	projectID := c.Params("projectId")
-
-	if projectID == "" {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Project ID is required",
-		})
-	}
-
-	var commitReq map[string]interface{}
-	if err := c.BodyParser(&commitReq); err != nil {
-		h.logger.Errorf("Failed to parse commit request: %v", err)
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid commit request",
-		})
-	}
-
-	transactionID, ok := commitReq["transaction"].(string)
-	if !ok {
-		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "Transaction ID is required",
-		})
-	}
-
-	err := h.firestoreUC.CommitTransaction(c.Context(), projectID, transactionID)
-	if err != nil {
-		h.logger.Errorf("Failed to commit transaction: %v", err)
-		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to commit transaction",
-		})
-	}
-
-	return c.JSON(fiber.Map{
-		"commitTime": "2024-01-01T00:00:00Z", // Placeholder timestamp
-	})
-}
-
-// extractToken extracts the authentication token from the request
-func (h *FirestoreHTTPHandler) extractToken(c *fiber.Ctx) string {
-	// Try Authorization header first
-	auth := c.Get("Authorization")
-	if auth != "" && strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
-	}
-
-	// Try query parameter
-	return c.Query("access_token")
-}
-
-// SetupRoutes configures the HTTP routes for Firestore operations
-func (h *FirestoreHTTPHandler) SetupRoutes(router fiber.Router) {
-	v1 := router.Group("/v1")
-
-	// Document operations
-	v1.Post("/projects/:projectId/databases/(default)/documents/:collectionId", h.CreateDocument)
-	v1.Post("/projects/:projectId/databases/(default)/documents/:collectionId/:documentId", h.CreateDocument)
-	v1.Get("/projects/:projectId/databases/(default)/documents/:collectionId/:documentId", h.GetDocument)
-	v1.Patch("/projects/:projectId/databases/(default)/documents/:collectionId/:documentId", h.UpdateDocument)
-	v1.Delete("/projects/:projectId/databases/(default)/documents/:collectionId/:documentId", h.DeleteDocument)
-	v1.Get("/projects/:projectId/databases/(default)/documents/:collectionId", h.ListDocuments)
-
-	// Query operations
-	v1.Post("/projects/:projectId/databases/(default)/documents:runQuery", h.RunQuery)
-
-	// Transaction operations
-	v1.Post("/projects/:projectId/databases/(default)/documents:beginTransaction", h.BeginTransaction)
-	v1.Post("/projects/:projectId/databases/(default)/documents:commit", h.CommitTransaction)
+	return c.JSON(results)
 }

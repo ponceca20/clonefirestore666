@@ -2,27 +2,65 @@ package repository
 
 import (
 	"context"
-	// "firestore-clone/internal/auth/domain/model" // Assuming User model exists in auth module
+	"firestore-clone/internal/auth/domain/model"
 )
+
+// OperationType defines the type of operation being performed
+type OperationType string
+
+const (
+	OperationRead   OperationType = "read"
+	OperationWrite  OperationType = "write"
+	OperationDelete OperationType = "delete"
+	OperationCreate OperationType = "create"
+	OperationUpdate OperationType = "update"
+)
+
+// SecurityContext contains context information for rule evaluation
+type SecurityContext struct {
+	User       *model.User            `json:"user,omitempty"`
+	ProjectID  string                 `json:"projectId"`
+	DatabaseID string                 `json:"databaseId"`
+	Resource   map[string]interface{} `json:"resource,omitempty"`
+	Request    map[string]interface{} `json:"request,omitempty"`
+	Timestamp  int64                  `json:"timestamp"`
+	Path       string                 `json:"path"`
+}
+
+// SecurityRule represents a single security rule
+type SecurityRule struct {
+	// Match pattern for paths this rule applies to
+	Match string `json:"match"`
+
+	// Allow conditions for different operations
+	Allow map[OperationType]string `json:"allow,omitempty"`
+
+	// Deny conditions for different operations
+	Deny map[OperationType]string `json:"deny,omitempty"`
+
+	// Priority of this rule (higher priority rules are evaluated first)
+	Priority int `json:"priority"`
+}
+
+// RuleEvaluationResult represents the result of rule evaluation
+type RuleEvaluationResult struct {
+	Allowed   bool   `json:"allowed"`
+	DeniedBy  string `json:"deniedBy,omitempty"`
+	AllowedBy string `json:"allowedBy,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+}
 
 // SecurityRulesEngine defines the interface for evaluating Firestore security rules.
 type SecurityRulesEngine interface {
-	// CheckAccess checks if a given operation is allowed based on security rules.
-	// userID might be an empty string for unauthenticated requests.
-	// resourcePath is the path to the document or collection being accessed.
-	// operationType could be "read", "write", "delete", "list".
-	// requestData is relevant for write operations.
-	CheckAccess(ctx context.Context, userID string, resourcePath string, operationType string, requestData map[string]interface{}) (bool, error)
+	// EvaluateAccess checks if a user can perform an operation on a resource
+	EvaluateAccess(ctx context.Context, operation OperationType, securityContext *SecurityContext) (*RuleEvaluationResult, error)
 
-	// LoadRules loads and compiles the security rules.
-	// This would typically be called when the rules are updated.
-	LoadRules(ctx context.Context, rules string) error
+	// LoadRules loads security rules from storage
+	LoadRules(ctx context.Context, projectID, databaseID string) ([]*SecurityRule, error)
+
+	// SaveRules saves security rules to storage
+	SaveRules(ctx context.Context, projectID, databaseID string, rules []*SecurityRule) error
+
+	// ValidateRules validates the syntax and logic of security rules
+	ValidateRules(rules []*SecurityRule) error
 }
-
-// TODO: Define common operation types
-const (
-	OperationRead   = "read"
-	OperationWrite  = "write" // Covers create and update
-	OperationDelete = "delete"
-	OperationList   = "list"
-)

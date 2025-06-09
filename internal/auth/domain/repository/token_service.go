@@ -8,14 +8,16 @@ import (
 
 // TokenService defines the interface for token operations
 type TokenService interface {
-	GenerateToken(ctx context.Context, userID, email, tenantID string) (string, error)
+	GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*Claims, error)
 }
 
 // Claims represents JWT claims
 type Claims struct {
-	UserID   string `json:"userID"`
-	Email    string `json:"email"`
-	TenantID string `json:"tenantID"`
+	UserID     string `json:"userID"`
+	Email      string `json:"email"`
+	TenantID   string `json:"tenantID"`
+	ProjectID  string `json:"projectID"`
+	DatabaseID string `json:"databaseID"`
 	jwt.RegisteredClaims
 }

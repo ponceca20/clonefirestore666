@@ -72,6 +72,11 @@ func (am *AuthModule) GetUsecase() usecase.AuthUsecaseInterface {
 	return am.usecase
 }
 
+// GetTokenService returns the token service for external access
+func (am *AuthModule) GetTokenService() repository.TokenService {
+	return am.tokenSvc
+}
+
 // GetMiddleware returns the auth middleware
 func (am *AuthModule) GetMiddleware() *authhttp.AuthMiddleware {
 	return authhttp.NewAuthMiddleware(am.usecase, am.config.CookieName)

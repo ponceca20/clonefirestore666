@@ -2,6 +2,7 @@ package firestore
 
 import (
 	"fmt"
+
 	// Added imports
 	httpadapter "firestore-clone/internal/firestore/adapter/http"
 	mongodbpersistence "firestore-clone/internal/firestore/adapter/persistence/mongodb"
@@ -9,31 +10,33 @@ import (
 	"firestore-clone/internal/firestore/domain/client"
 	"firestore-clone/internal/firestore/domain/repository" // May keep for interfaces
 	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/shared/eventbus"
 	"firestore-clone/internal/shared/logger"
 
 	"github.com/gofiber/fiber/v2" // For RegisterRoutes parameter
+	"go.mongodb.org/mongo-driver/mongo"
 	// "go.uber.org/zap" // Example logger, use passed logger
 )
 
 // FirestoreModule represents the core Firestore module.
 type FirestoreModule struct {
 	Config           *config.FirestoreConfig
-	AuthClient       client.AuthClient // Client to interact with Auth module
-	DocumentRepo     *mongodbpersistence.DocumentRepository // Updated to specific type
-	QueryEngine      repository.QueryEngine                 // TODO: Define and initialize
-	SecurityRules    repository.SecurityRulesEngine         // TODO: Define and initialize
-	FirestoreUsecase usecase.FirestoreUsecase
-	RealtimeUsecase  usecase.RealtimeUsecase // Added
-	SecurityUsecase  usecase.SecurityUsecase
+	AuthClient       client.AuthClient                      // Client to interact with Auth module
+	DocumentRepo     *mongodbpersistence.DocumentRepository // MongoDB implementation
+	QueryEngine      repository.QueryEngine                 // MongoDB query engine implementation
+	SecurityRules    repository.SecurityRulesEngine         // MongoDB security rules engine implementation
+	FirestoreUsecase usecase.FirestoreUsecaseInterface      // Interface type
+	RealtimeUsecase  usecase.RealtimeUsecase                // Interface type
+	SecurityUsecase  usecase.SecurityUsecase                // Interface type
 	Logger           logger.Logger
 	// wsHandler *httpadapter.WebSocketHandler // Optional: if needed beyond RegisterRoutes
 }
 
 // NewFirestoreModule creates and initializes a new Firestore module.
 func NewFirestoreModule(
-	authClient client.AuthClient, // Added
-	log logger.Logger, // Added
-	// Other dependencies like db connections
+	authClient client.AuthClient,
+	log logger.Logger,
+	mongoDB *mongo.Database, // Se agrega la base de datos como dependencia
 ) (*FirestoreModule, error) {
 	fmt.Println("Initializing Firestore Module...")
 	log.Info("Initializing Firestore Module...")
@@ -46,57 +49,50 @@ func NewFirestoreModule(
 	}
 	log.Info("Firestore configuration loaded successfully.")
 
-	// Initialize DocumentRepository (MongoDB implementation)
-	docRepo, err := mongodbpersistence.NewDocumentRepository(cfg, log)
-	if err != nil {
-		log.Error("Failed to initialize DocumentRepository", "error", err)
-		return nil, fmt.Errorf("failed to initialize document repository: %w", err)
-	}
+	// Inicializar EventBus
+	eventBus := eventbus.NewEventBus(log) // Inicializar DocumentRepository (MongoDB implementation)
+	docRepo := mongodbpersistence.NewDocumentRepository(mongoDB, eventBus, log)
 	log.Info("DocumentRepository initialized successfully.")
 
-	// TODO: Initialize query engine
-	// TODO: Initialize security rules engine
+	// Initialize query engine with MongoDB implementation
+	queryEngine := mongodbpersistence.NewMongoQueryEngine(mongoDB)
+	log.Info("QueryEngine initialized successfully.")
+
+	// Initialize security rules engine
+	securityRulesEngine := mongodbpersistence.NewSecurityRulesEngine(mongoDB, log)
+	log.Info("SecurityRulesEngine initialized successfully.")
 
 	// Initialize use cases
 	realtimeUC := usecase.NewRealtimeUsecase(log)
-	securityUC := usecase.NewSecurityUsecase(log)
-
-	// TODO: Initialize FirestoreUsecase with all dependencies
-	// firestoreUC := usecase.NewFirestoreUsecase(docRepo, log, realtimeUC, securityUC) // Pass docRepo
+	securityUC := usecase.NewSecurityUsecase(securityRulesEngine, log)
+	// Initialize FirestoreUsecase with all dependencies
+	firestoreUC := usecase.NewFirestoreUsecase(docRepo, securityRulesEngine, queryEngine, log)
 
 	return &FirestoreModule{
-		Config:          cfg,
-		AuthClient:      authClient,
-		Logger:          log,
-		DocumentRepo:    docRepo,
-		RealtimeUsecase: realtimeUC,
-		SecurityUsecase: securityUC,
-		// FirestoreUsecase: firestoreUC, // Uncomment when ready
+		Config:           cfg,
+		AuthClient:       authClient,
+		Logger:           log,
+		DocumentRepo:     docRepo,
+		QueryEngine:      queryEngine,
+		SecurityRules:    securityRulesEngine,
+		RealtimeUsecase:  realtimeUC,
+		SecurityUsecase:  securityUC,
+		FirestoreUsecase: firestoreUC,
 		// Assign other initialized components here
 	}, nil
 }
 
 // RegisterRoutes registers the HTTP routes for the Firestore module.
 func (m *FirestoreModule) RegisterRoutes(router *fiber.App) {
-	// httpAdapter := httpadapter.NewFirestoreRouter(m.FirestoreUsecase, m.SecurityUsecase, m.Logger)
-	// httpAdapter.RegisterRoutes(router)
+	// Register HTTP adapter for Firestore REST API
+	httpHandler := httpadapter.NewFirestoreHTTPHandler(m.FirestoreUsecase, m.SecurityUsecase, m.RealtimeUsecase, m.AuthClient, m.Logger)
+	httpHandler.RegisterRoutes(router)
 
-	// Ensure RealtimeUsecase and AuthClient are not nil if they are critical for WS
-	if m.RealtimeUsecase == nil {
-		m.Logger.Error("RealtimeUsecase is not initialized in FirestoreModule")
-		// Potentially panic or return an error if this setup is critical
-		return
-	}
-	if m.AuthClient == nil {
-		m.Logger.Error("AuthClient is not initialized in FirestoreModule for WebSocketHandler")
-		// Potentially panic or return an error
-		return
-	}
-
-	wsHandler := httpadapter.NewWebSocketHandler(m.RealtimeUsecase, m.AuthClient, m.Logger)
+	// Register WebSocket handler for real-time updates
+	wsHandler := httpadapter.NewWebSocketHandler(m.RealtimeUsecase, m.SecurityUsecase, m.AuthClient, m.Logger)
 	wsHandler.RegisterRoutes(router)
 
-	m.Logger.Info("Firestore routes and WebSocket handler registered.")
+	m.Logger.Info("Firestore HTTP routes and WebSocket handler registered.")
 }
 
 // StartRealtimeServices starts any background services for real-time functionality.
@@ -110,18 +106,8 @@ func (m *FirestoreModule) StartRealtimeServices() {
 // Stop gracefully shuts down the Firestore module.
 func (m *FirestoreModule) Stop() error {
 	m.Logger.Info("Stopping Firestore Module...")
-
-	// Gracefully close database connections
-	if m.DocumentRepo != nil {
-		if err := m.DocumentRepo.Disconnect(context.Background()); err != nil { // Assuming context.Background() is okay for shutdown
-			m.Logger.Error("Failed to disconnect DocumentRepository", "error", err)
-			// Decide if we should return the error or just log it
-		} else {
-			m.Logger.Info("DocumentRepository disconnected successfully.")
-		}
-	}
-
-	// If RealtimeUsecase had resources to clean up (e.g. closing all client channels), it would be done here.
+	// No hay método Close en DocumentRepo, así que solo logueamos
+	// Si se requiere cerrar la conexión a MongoDB, debe hacerse fuera de este módulo
 	m.Logger.Info("Firestore Module stopped.")
 	return nil
 }

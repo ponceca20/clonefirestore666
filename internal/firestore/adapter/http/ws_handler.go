@@ -2,40 +2,42 @@ package http
 
 import (
 	"context"
-	"encoding/json"
+	"sync"
+	"time"
+
+	authModel "firestore-clone/internal/auth/domain/model"
 	"firestore-clone/internal/firestore/domain/client"
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/shared/firestore"
 	"firestore-clone/internal/shared/logger"
-	"sync" // Added for managing client subscriptions within the handler
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid" // For generating unique subscriber IDs
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // WebSocketHandler manages WebSocket connections for real-time updates.
 type WebSocketHandler struct {
 	realtimeUC usecase.RealtimeUsecase
-	authClient client.AuthClient // To validate tokens for WS connections
+	securityUC usecase.SecurityUsecase
+	authClient client.AuthClient
 	log        logger.Logger
-	// Store active subscriptions per client to manage them on disconnect
-	// clientSubscriptions map[string]map[string]bool // subscriberID -> path -> true
-	// mu sync.RWMutex // To protect clientSubscriptions
 }
 
 // NewWebSocketHandler creates a new WebSocketHandler.
 func NewWebSocketHandler(
 	rtuc usecase.RealtimeUsecase,
+	secUC usecase.SecurityUsecase,
 	ac client.AuthClient,
 	log logger.Logger,
 ) *WebSocketHandler {
 	return &WebSocketHandler{
 		realtimeUC: rtuc,
+		securityUC: secUC,
 		authClient: ac,
 		log:        log,
-		// clientSubscriptions: make(map[string]map[string]bool),
 	}
 }
 
@@ -49,178 +51,312 @@ func (h *WebSocketHandler) RegisterRoutes(app *fiber.App) {
 		}
 		return fiber.ErrUpgradeRequired
 	})
+
 	app.Get("/ws/v1/listen", websocket.New(h.handleWebSocketConnection))
 }
 
-// ClientSubscriptionMessage defines the structure for messages from the client.
-type ClientSubscriptionMessage struct {
-	Action string `json:"action"` // "subscribe" or "unsubscribe"
-	Path   string `json:"path"`
-	Token  string `json:"token,omitempty"` // Optional: token for initial auth if not in query params
+// WebSocketMessage represents messages sent/received via WebSocket
+type WebSocketMessage struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+// ErrorResponse represents an error response
+type ErrorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
 }
 
 // handleWebSocketConnection is called when a new WebSocket connection is established.
 func (h *WebSocketHandler) handleWebSocketConnection(conn *websocket.Conn) {
 	ctx, cancelCtx := context.WithCancel(context.Background())
-	defer cancelCtx() // Ensure context is cancelled when handler exits
+	defer cancelCtx()
 
 	subscriberID := uuid.NewString()
-	log := h.log
-	log.Info(ctx, "New WebSocket connection established")
 
-	// Simple token authentication (example: from query param during connection)
-	// In a real app, this might come from a subprotocol header or an initial message.
-	// token := conn.Query("token")
-	// if token == "" {
-	// log.Warn(ctx, "Missing token for WebSocket connection")
-	// conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Missing authentication token"))
-	// conn.Close()
-	// return
-	// }
-	//
-	// _, err := h.authClient.ValidateToken(ctx, token)
-	// if err != nil {
-	// log.Error(ctx, "Invalid token for WebSocket connection", zap.Error(err))
-	// conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "Invalid authentication token"))
-	// conn.Close()
-	// return
-	// }
-	// log.Info(ctx, "WebSocket connection authenticated")
+	h.log.Info("New WebSocket connection established",
+		zap.String("subscriberID", subscriberID))
 
-	// Each client needs its own set of channels for subscriptions.
-	// When a client subscribes to a path, a new channel is made for that specific subscription.
-	// We need to keep track of these channels to send data and to close them on unsubscribe/disconnect.
-	// activeSubEventChannels: path -> chan model.RealtimeEvent
-	activeSubEventChannels := make(map[string]chan model.RealtimeEvent)
-	var activeSubMu sync.Mutex // Protects activeSubEventChannels for this specific client
+	// Track active subscriptions for this client
+	activeSubscriptions := make(map[string]chan model.RealtimeEvent)
+	var subscriptionMu sync.Mutex
 
+	// Cleanup on disconnect
 	defer func() {
-		log.Info(ctx, "WebSocket connection closing")
-		activeSubMu.Lock()
-		for path, ch := range activeSubEventChannels {
-			log.Info(ctx, "Unsubscribing from path on disconnect", zap.String("path", path))
-			// No need to pass context here if Unsubscribe doesn't use it for critical ops
-			if err := h.realtimeUC.Unsubscribe(context.Background(), subscriberID, path); err != nil {
-				log.Error(ctx, "Error unsubscribing on disconnect", zap.String("path", path), zap.Error(err))
-			}
-			close(ch) // Close the channel associated with this subscription
+		h.log.Info("WebSocket connection closing",
+			zap.String("subscriberID", subscriberID))
+
+		// Unsubscribe from all paths
+		if err := h.realtimeUC.UnsubscribeAll(ctx, subscriberID); err != nil {
+			h.log.Error("Error unsubscribing all paths",
+				zap.String("subscriberID", subscriberID),
+				zap.Error(err))
 		}
-		activeSubMu.Unlock()
+
+		// Close all event channels
+		subscriptionMu.Lock()
+		for path, ch := range activeSubscriptions {
+			close(ch)
+			delete(activeSubscriptions, path)
+		}
+		subscriptionMu.Unlock()
 	}()
 
-	// Goroutine to read messages from the client
-	go func() {
-		defer func() {
-			log.Info(ctx, "Stopping incoming message handler for client")
-			cancelCtx()  // Signal outgoing handler to stop
-			conn.Close() // Ensure connection is closed if read loop exits first
-		}()
+	// Start message handler goroutine
+	go h.handleIncomingMessages(ctx, conn, subscriberID, activeSubscriptions, &subscriptionMu)
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				messageType, p, err := conn.ReadMessage()
-				if err != nil {
-					if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure, websocket.CloseNormalClosure) {
-						log.Error(ctx, "Error reading message from WebSocket", zap.Error(err))
-					} else {
-						log.Info(ctx, "WebSocket gracefully closed by client or due to error", zap.Error(err))
-					}
-					return // Exit goroutine
+	// Start event forwarding goroutine
+	go h.handleEventForwarding(ctx, conn, subscriberID, activeSubscriptions, &subscriptionMu)
+
+	// Keep connection alive
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Set read deadline
+			conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+
+			// Keep reading to detect disconnection
+			if _, _, err := conn.ReadMessage(); err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					h.log.Error("WebSocket error",
+						zap.String("subscriberID", subscriberID),
+						zap.Error(err))
 				}
+				return
+			}
+		}
+	}
+}
 
-				if messageType == websocket.TextMessage || messageType == websocket.BinaryMessage {
-					var msg ClientSubscriptionMessage
-					if err := json.Unmarshal(p, &msg); err != nil {
-						log.Warn(ctx, "Error unmarshalling client message", zap.Error(err), zap.ByteString("payload", p))
-						conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: "", Data: map[string]interface{}{"error": "invalid message format"}})
+// handleIncomingMessages processes messages from the client
+func (h *WebSocketHandler) handleIncomingMessages(
+	ctx context.Context,
+	conn *websocket.Conn,
+	subscriberID string,
+	activeSubscriptions map[string]chan model.RealtimeEvent,
+	subscriptionMu *sync.Mutex,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			var msg model.SubscriptionRequest
+			if err := conn.ReadJSON(&msg); err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					h.log.Error("Error reading WebSocket message",
+						zap.String("subscriberID", subscriberID),
+						zap.Error(err))
+				}
+				return
+			}
+
+			switch msg.Action {
+			case "subscribe":
+				h.handleSubscribe(ctx, conn, subscriberID, msg, activeSubscriptions, subscriptionMu)
+			case "unsubscribe":
+				h.handleUnsubscribe(ctx, conn, subscriberID, msg, activeSubscriptions, subscriptionMu)
+			default:
+				h.sendError(conn, "invalid_action", "Unknown action: "+msg.Action)
+			}
+		}
+	}
+}
+
+// handleSubscribe processes subscription requests
+func (h *WebSocketHandler) handleSubscribe(
+	ctx context.Context,
+	conn *websocket.Conn,
+	subscriberID string,
+	req model.SubscriptionRequest,
+	activeSubscriptions map[string]chan model.RealtimeEvent,
+	subscriptionMu *sync.Mutex,
+) {
+	// Validate Firestore path
+	pathInfo, err := firestore.ParseFirestorePath(req.FullPath)
+	if err != nil {
+		h.log.Warn("Invalid Firestore path in subscription",
+			zap.String("subscriberID", subscriberID),
+			zap.String("path", req.FullPath),
+			zap.Error(err))
+		h.sendError(conn, "invalid_path", "Invalid Firestore path")
+		return
+	}
+
+	// Validate security permissions
+	if h.securityUC != nil {
+		// Extract user information from context (set by auth middleware)
+		userInterface := ctx.Value("user")
+		if userInterface == nil {
+			h.log.Warn("No user in context for WebSocket subscription",
+				zap.String("subscriberID", subscriberID),
+				zap.String("path", req.FullPath))
+			h.sendError(conn, "unauthorized", "Authentication required")
+			return
+		}
+		// Type assert to get the user
+		user, ok := userInterface.(*authModel.User)
+		if !ok {
+			h.log.Error("Invalid user type in context",
+				zap.String("subscriberID", subscriberID),
+				zap.String("path", req.FullPath))
+			h.sendError(conn, "unauthorized", "Invalid user context")
+			return
+		}
+
+		// Validate read access to the path
+		if err := h.securityUC.ValidateRead(ctx, user, req.FullPath); err != nil {
+			h.log.Warn("Security validation failed for WebSocket subscription",
+				zap.String("subscriberID", subscriberID),
+				zap.String("path", req.FullPath),
+				zap.String("userID", user.ID),
+				zap.Error(err))
+			h.sendError(conn, "forbidden", "Access denied to this path")
+			return
+		}
+	}
+
+	// Create event channel for this subscription
+	eventChan := make(chan model.RealtimeEvent, 100) // Buffered channel
+
+	// Register subscription
+	if err := h.realtimeUC.Subscribe(ctx, subscriberID, req.FullPath, eventChan); err != nil {
+		h.log.Error("Error subscribing to path",
+			zap.String("subscriberID", subscriberID),
+			zap.String("path", req.FullPath),
+			zap.Error(err))
+		h.sendError(conn, "subscription_failed", "Failed to subscribe to path")
+		close(eventChan)
+		return
+	}
+
+	// Track subscription
+	subscriptionMu.Lock()
+	activeSubscriptions[req.FullPath] = eventChan
+	subscriptionMu.Unlock()
+
+	h.log.Info("Client subscribed to path",
+		zap.String("subscriberID", subscriberID),
+		zap.String("path", req.FullPath),
+		zap.String("projectID", pathInfo.ProjectID),
+		zap.String("databaseID", pathInfo.DatabaseID))
+
+	// Send confirmation
+	response := WebSocketMessage{
+		Type: "subscription_confirmed",
+		Data: map[string]interface{}{
+			"fullPath":   req.FullPath,
+			"projectId":  pathInfo.ProjectID,
+			"databaseId": pathInfo.DatabaseID,
+		},
+	}
+	conn.WriteJSON(response)
+}
+
+// handleUnsubscribe processes unsubscription requests
+func (h *WebSocketHandler) handleUnsubscribe(
+	ctx context.Context,
+	conn *websocket.Conn,
+	subscriberID string,
+	req model.SubscriptionRequest,
+	activeSubscriptions map[string]chan model.RealtimeEvent,
+	subscriptionMu *sync.Mutex,
+) {
+	// Unregister from realtime service
+	if err := h.realtimeUC.Unsubscribe(ctx, subscriberID, req.FullPath); err != nil {
+		h.log.Error("Error unsubscribing from path",
+			zap.String("subscriberID", subscriberID),
+			zap.String("path", req.FullPath),
+			zap.Error(err))
+	}
+
+	// Close and remove event channel
+	subscriptionMu.Lock()
+	if eventChan, exists := activeSubscriptions[req.FullPath]; exists {
+		close(eventChan)
+		delete(activeSubscriptions, req.FullPath)
+	}
+	subscriptionMu.Unlock()
+
+	h.log.Info("Client unsubscribed from path",
+		zap.String("subscriberID", subscriberID),
+		zap.String("path", req.FullPath))
+
+	// Send confirmation
+	response := WebSocketMessage{
+		Type: "unsubscription_confirmed",
+		Data: map[string]interface{}{
+			"fullPath": req.FullPath,
+		},
+	}
+	conn.WriteJSON(response)
+}
+
+// handleEventForwarding forwards real-time events to the client
+func (h *WebSocketHandler) handleEventForwarding(
+	ctx context.Context,
+	conn *websocket.Conn,
+	subscriberID string,
+	activeSubscriptions map[string]chan model.RealtimeEvent,
+	subscriptionMu *sync.Mutex,
+) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Check all active subscriptions for events
+			subscriptionMu.Lock()
+			for path, eventChan := range activeSubscriptions {
+				select {
+				case event, ok := <-eventChan:
+					if !ok {
+						// Channel was closed, remove from active subscriptions
+						delete(activeSubscriptions, path)
 						continue
 					}
 
-					log.Info(ctx, "Received message from client", zap.String("action", msg.Action), zap.String("path", msg.Path))
-
-					activeSubMu.Lock()
-					currentChan, isSubscribed := activeSubEventChannels[msg.Path]
-					activeSubMu.Unlock()
-
-					switch msg.Action {
-					case "subscribe":
-						if isSubscribed {
-							log.Warn(ctx, "Client already subscribed to path", zap.String("path", msg.Path))
-							conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: msg.Path, Data: map[string]interface{}{"error": "already subscribed"}})
-							continue
-						}
-
-						// Create a new channel for this specific subscription
-						eventChan := make(chan model.RealtimeEvent, 10) // Buffered channel
-						if err := h.realtimeUC.Subscribe(ctx, subscriberID, msg.Path, eventChan); err != nil {
-							log.Error(ctx, "Error subscribing client", zap.String("path", msg.Path), zap.Error(err))
-							conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: msg.Path, Data: map[string]interface{}{"error": "subscription failed"}})
-							close(eventChan) // Important: close channel if subscribe failed
-							continue
-						}
-						activeSubMu.Lock()
-						activeSubEventChannels[msg.Path] = eventChan
-						activeSubMu.Unlock()
-						log.Info(ctx, "Client subscribed to path", zap.String("path", msg.Path))
-						conn.WriteJSON(model.RealtimeEvent{Type: "system", Path: msg.Path, Data: map[string]interface{}{"status": "subscribed"}})
-
-						// Start a goroutine to listen on this new channel and send to client
-						go func(path string, ch <-chan model.RealtimeEvent) {
-							// Use the existing log variable; logger.Logger does not have a With method
-							log.Info(ctx, "Starting outgoing event handler for path", zap.String("path", path))
-							defer log.Info(ctx, "Stopping outgoing event handler for path", zap.String("path", path))
-							for {
-								select {
-								case <-ctx.Done(): // Connection context is cancelled
-									return
-								case event, ok := <-ch:
-									if !ok { // Channel closed by Unsubscribe or disconnect
-										log.Info(ctx, "Event channel closed for path")
-										return
-									}
-									log.Debug(ctx, "Sending event to client", zap.Any("event", event))
-									if err := conn.WriteJSON(event); err != nil {
-										log.Error(ctx, "Error writing JSON to WebSocket", zap.Error(err))
-										// If write fails, the connection might be dead.
-										// The main read loop will likely detect this and trigger cleanup.
-										// Or we can signal cancellation here.
-										cancelCtx()
-										return
-									}
-								}
-							}
-						}(msg.Path, eventChan)
-
-					case "unsubscribe":
-						if !isSubscribed {
-							log.Warn(ctx, "Client not subscribed to path, cannot unsubscribe", zap.String("path", msg.Path))
-							conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: msg.Path, Data: map[string]interface{}{"error": "not subscribed"}})
-							continue
-						}
-						if err := h.realtimeUC.Unsubscribe(ctx, subscriberID, msg.Path); err != nil {
-							log.Error(ctx, "Error unsubscribing client", zap.String("path", msg.Path), zap.Error(err))
-							conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: msg.Path, Data: map[string]interface{}{"error": "unsubscription failed"}})
-							continue
-						}
-						activeSubMu.Lock()
-						delete(activeSubEventChannels, msg.Path)
-						activeSubMu.Unlock()
-						close(currentChan) // Close the channel after unsubscribing
-						log.Info(ctx, "Client unsubscribed from path", zap.String("path", msg.Path))
-						conn.WriteJSON(model.RealtimeEvent{Type: "system", Path: msg.Path, Data: map[string]interface{}{"status": "unsubscribed"}})
-
-					default:
-						log.Warn(ctx, "Unknown action from client", zap.String("action", msg.Action))
-						conn.WriteJSON(model.RealtimeEvent{Type: "error", Path: "", Data: map[string]interface{}{"error": "unknown action"}})
+					// Forward event to client
+					response := WebSocketMessage{
+						Type: "document_change",
+						Data: event,
 					}
-				} else {
-					log.Info(ctx, "Received non-text/binary message from WebSocket", zap.Int("messageType", messageType))
+
+					if err := conn.WriteJSON(response); err != nil {
+						h.log.Error("Error sending event to client",
+							zap.String("subscriberID", subscriberID),
+							zap.String("path", path),
+							zap.Error(err))
+						subscriptionMu.Unlock()
+						return
+					}
+
+					h.log.Debug("Event forwarded to client",
+						zap.String("subscriberID", subscriberID),
+						zap.String("path", path),
+						zap.String("eventType", string(event.Type)))
+				default:
+					// No event available, continue
 				}
 			}
+			subscriptionMu.Unlock()
+
+			// Small delay to prevent busy waiting
+			time.Sleep(10 * time.Millisecond)
 		}
-	}()
-	log.Info(ctx, "WebSocket connection handler fully initialized and listening")
+	}
+}
+
+// sendError sends an error message to the client
+func (h *WebSocketHandler) sendError(conn *websocket.Conn, errorType, message string) {
+	response := WebSocketMessage{
+		Type: "error",
+		Data: ErrorResponse{
+			Error:   errorType,
+			Message: message,
+		},
+	}
+	conn.WriteJSON(response)
 }

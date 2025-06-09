@@ -30,6 +30,14 @@ func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger {
 	return m
 }
 
+func (m *mockLogger) WithContext(ctx context.Context) logger.Logger {
+	return m
+}
+
+func (m *mockLogger) WithComponent(component string) logger.Logger {
+	return m
+}
+
 func newTestRealtimeUsecase(t *testing.T) usecase.RealtimeUsecase {
 	return usecase.NewRealtimeUsecase(&mockLogger{})
 }
@@ -71,10 +79,17 @@ func TestRealtimeUsecase_PublishEvent_SingleSubscriber(t *testing.T) {
 	subscriberID1 := "client1"
 	path1 := "docs/doc1"
 	eventChan1 := make(chan model.RealtimeEvent, 1)
-
 	rtu.Subscribe(ctx, subscriberID1, path1, eventChan1)
 
-	event := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: path1, Data: map[string]interface{}{"key": "value"}}
+	event := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     "projects/test-project/databases/test-db/documents/" + path1,
+		ProjectID:    "test-project",
+		DatabaseID:   "test-db",
+		DocumentPath: path1,
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 	err := rtu.PublishEvent(ctx, event)
 	require.NoError(t, err)
 
@@ -92,11 +107,18 @@ func TestRealtimeUsecase_PublishEvent_MultipleSubscribersSamePath(t *testing.T) 
 	path1 := "docs/doc1"
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 	eventChan2 := make(chan model.RealtimeEvent, 1)
-
 	rtu.Subscribe(ctx, "client1", path1, eventChan1)
 	rtu.Subscribe(ctx, "client2", path1, eventChan2)
 
-	event := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: path1, Data: map[string]interface{}{"key": "value"}}
+	event := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     "projects/test-project/databases/test-db/documents/" + path1,
+		ProjectID:    "test-project",
+		DatabaseID:   "test-db",
+		DocumentPath: path1,
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 	rtu.PublishEvent(ctx, event)
 
 	var wg sync.WaitGroup
@@ -127,11 +149,18 @@ func TestRealtimeUsecase_PublishEvent_DifferentPaths(t *testing.T) {
 	ctx := context.Background()
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 	eventChan2 := make(chan model.RealtimeEvent, 1) // For a different path
-
 	rtu.Subscribe(ctx, "client1", "path1", eventChan1)
 	rtu.Subscribe(ctx, "client2", "path2", eventChan2)
 
-	eventForPath1 := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: "path1", Data: map[string]interface{}{"key": "value"}}
+	eventForPath1 := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     "projects/test-project/databases/test-db/documents/path1",
+		ProjectID:    "test-project",
+		DatabaseID:   "test-db",
+		DocumentPath: "path1",
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 	rtu.PublishEvent(ctx, eventForPath1)
 
 	// Check path1 receives it
@@ -154,7 +183,15 @@ func TestRealtimeUsecase_PublishEvent_DifferentPaths(t *testing.T) {
 func TestRealtimeUsecase_PublishEvent_NoSubscribers(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
-	event := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: "path/none", Data: map[string]interface{}{"key": "value"}}
+	event := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     "projects/test-project/databases/test-db/documents/path/none",
+		ProjectID:    "test-project",
+		DatabaseID:   "test-db",
+		DocumentPath: "path/none",
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 	err := rtu.PublishEvent(ctx, event)
 	assert.NoError(t, err, "Publishing to a path with no subscribers should not error")
 }
@@ -170,12 +207,19 @@ func TestRealtimeUsecase_Subscribe_OverwriteSubscription(t *testing.T) {
 	// First subscription
 	err := rtu.Subscribe(ctx, subscriberID, path, eventChanOld)
 	require.NoError(t, err)
-
 	// Second subscription to the same path by the same client, with a new channel
 	err = rtu.Subscribe(ctx, subscriberID, path, eventChanNew)
 	require.NoError(t, err) // Current implementation overwrites
 
-	event := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: path, Data: map[string]interface{}{"key": "value"}}
+	event := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     path,
+		ProjectID:    "test-project",
+		DatabaseID:   "test-database",
+		DocumentPath: "docs/test_doc",
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 	err = rtu.PublishEvent(ctx, event)
 	require.NoError(t, err)
 
@@ -203,11 +247,18 @@ func TestRealtimeUsecase_PublishEvent_ChannelFull(t *testing.T) {
 	path := "docs/doc_slow"
 	// Unbuffered channel to simulate immediate blocking
 	eventChan := make(chan model.RealtimeEvent)
-
 	err := rtu.Subscribe(ctx, subscriberID, path, eventChan)
 	require.NoError(t, err)
 
-	event := model.RealtimeEvent{Type: model.EventTypeUpdated, Path: path, Data: map[string]interface{}{"key": "value"}}
+	event := model.RealtimeEvent{
+		Type:         model.EventTypeUpdated,
+		FullPath:     path,
+		ProjectID:    "test-project",
+		DatabaseID:   "test-database",
+		DocumentPath: "docs/doc_slow",
+		Data:         map[string]interface{}{"key": "value"},
+		Timestamp:    time.Now(),
+	}
 
 	// Publish. Since the channel is unbuffered and no one is reading,
 	// the send attempt in PublishEvent should hit the 'default' case in the select.

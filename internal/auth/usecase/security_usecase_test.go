@@ -2,202 +2,96 @@ package usecase_test
 
 import (
 	"context"
+	"errors"
 	"testing"
-	"time"
 
-	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/auth/domain/model"
+	"firestore-clone/internal/firestore/domain/repository"
+	firestoreusecase "firestore-clone/internal/firestore/usecase"
 	"firestore-clone/internal/shared/logger"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
-type mockSecurityLogger struct{}
+// MockSecurityRulesEngine mocks the SecurityRulesEngine interface
+// Only EvaluateAccess is needed for these tests
 
-func (m *mockSecurityLogger) Debug(args ...interface{})                 {}
-func (m *mockSecurityLogger) Info(args ...interface{})                  {}
-func (m *mockSecurityLogger) Warn(args ...interface{})                  {}
-func (m *mockSecurityLogger) Error(args ...interface{})                 {}
-func (m *mockSecurityLogger) Fatal(args ...interface{})                 {}
-func (m *mockSecurityLogger) Debugf(format string, args ...interface{}) {}
-func (m *mockSecurityLogger) Infof(format string, args ...interface{})  {}
-func (m *mockSecurityLogger) Warnf(format string, args ...interface{})  {}
-func (m *mockSecurityLogger) Errorf(format string, args ...interface{}) {}
-func (m *mockSecurityLogger) Fatalf(format string, args ...interface{}) {}
-func (m *mockSecurityLogger) WithFields(fields map[string]interface{}) logger.Logger {
-	return m
+type MockSecurityRulesEngine struct {
+	mock.Mock
 }
 
-func TestSecurityUsecase_ValidateRead_Success(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-
-	// Act
-	err := uc.ValidateRead(ctx, userID, path)
-
-	// Assert
-	assert.NoError(t, err, "ValidateRead should allow access for now")
-}
-
-func TestSecurityUsecase_ValidateWrite_Success(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-	data := map[string]interface{}{"field": "value"}
-
-	// Act
-	err := uc.ValidateWrite(ctx, userID, path, data)
-
-	// Assert
-	assert.NoError(t, err, "ValidateWrite should allow access for now")
-}
-
-func TestSecurityUsecase_ValidateDelete_Success(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-
-	// Act
-	err := uc.ValidateDelete(ctx, userID, path)
-
-	// Assert
-	assert.NoError(t, err, "ValidateDelete should allow access for now")
-}
-
-func TestSecurityUsecase_ValidateOperations_WithEmptyUserID(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := ""
-	path := "documents/doc1"
-	data := map[string]interface{}{"field": "value"}
-
-	// Act & Assert
-	assert.NoError(t, uc.ValidateRead(ctx, userID, path))
-	assert.NoError(t, uc.ValidateWrite(ctx, userID, path, data))
-	assert.NoError(t, uc.ValidateDelete(ctx, userID, path))
-}
-
-func TestSecurityUsecase_ValidateOperations_WithEmptyPath(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := ""
-	data := map[string]interface{}{"field": "value"}
-
-	// Act & Assert
-	assert.NoError(t, uc.ValidateRead(ctx, userID, path))
-	assert.NoError(t, uc.ValidateWrite(ctx, userID, path, data))
-	assert.NoError(t, uc.ValidateDelete(ctx, userID, path))
-}
-
-func TestSecurityUsecase_ValidateOperations_WithNilData(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-
-	// Act
-	err := uc.ValidateWrite(ctx, userID, path, nil)
-
-	// Assert
-	assert.NoError(t, err, "ValidateWrite should handle nil data")
-}
-
-func TestSecurityUsecase_ValidateOperations_WithCancelledContext(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	userID := "user-123"
-	path := "documents/doc1"
-	data := map[string]interface{}{"field": "value"}
-
-	// Act & Assert - Should still work since current implementation doesn't check context
-	assert.NoError(t, uc.ValidateRead(ctx, userID, path))
-	assert.NoError(t, uc.ValidateWrite(ctx, userID, path, data))
-	assert.NoError(t, uc.ValidateDelete(ctx, userID, path))
-}
-
-func TestSecurityUsecase_ValidateOperations_WithTimeout(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	defer cancel()
-
-	time.Sleep(2 * time.Millisecond) // Ensure timeout
-
-	userID := "user-123"
-	path := "documents/doc1"
-	data := map[string]interface{}{"field": "value"}
-
-	// Act & Assert - Should still work since current implementation doesn't check context
-	assert.NoError(t, uc.ValidateRead(ctx, userID, path))
-	assert.NoError(t, uc.ValidateWrite(ctx, userID, path, data))
-	assert.NoError(t, uc.ValidateDelete(ctx, userID, path))
-}
-
-func TestSecurityUsecase_ValidateOperations_ConcurrentAccess(t *testing.T) {
-	// Arrange
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-
-	// Act - Test concurrent access
-	for i := 0; i < 10; i++ {
-		go func(id int) {
-			userID := "user-" + string(rune(id))
-			path := "documents/doc" + string(rune(id))
-			data := map[string]interface{}{"id": id}
-
-			assert.NoError(t, uc.ValidateRead(ctx, userID, path))
-			assert.NoError(t, uc.ValidateWrite(ctx, userID, path, data))
-			assert.NoError(t, uc.ValidateDelete(ctx, userID, path))
-		}(i)
+func (m *MockSecurityRulesEngine) EvaluateAccess(ctx context.Context, operation repository.OperationType, securityContext *repository.SecurityContext) (*repository.RuleEvaluationResult, error) {
+	args := m.Called(ctx, operation, securityContext)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
 	}
+	return args.Get(0).(*repository.RuleEvaluationResult), args.Error(1)
+}
+func (m *MockSecurityRulesEngine) LoadRules(ctx context.Context, projectID, databaseID string) ([]*repository.SecurityRule, error) {
+	return nil, nil
+}
+func (m *MockSecurityRulesEngine) SaveRules(ctx context.Context, projectID, databaseID string, rules []*repository.SecurityRule) error {
+	return nil
+}
+func (m *MockSecurityRulesEngine) ValidateRules(rules []*repository.SecurityRule) error {
+	return nil
 }
 
-func BenchmarkSecurityUsecase_ValidateRead(b *testing.B) {
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
+// DummyLogger implements logger.Logger with no-ops for all methods
+// Only the methods required by the interface are implemented for the test
+type DummyLogger struct{}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		uc.ValidateRead(ctx, userID, path)
-	}
+func (d *DummyLogger) Debug(args ...interface{})                              {}
+func (d *DummyLogger) Info(args ...interface{})                               {}
+func (d *DummyLogger) Warn(args ...interface{})                               {}
+func (d *DummyLogger) Error(args ...interface{})                              {}
+func (d *DummyLogger) Fatal(args ...interface{})                              {}
+func (d *DummyLogger) Debugf(format string, args ...interface{})              {}
+func (d *DummyLogger) Infof(format string, args ...interface{})               {}
+func (d *DummyLogger) Warnf(format string, args ...interface{})               {}
+func (d *DummyLogger) Errorf(format string, args ...interface{})              {}
+func (d *DummyLogger) Fatalf(format string, args ...interface{})              {}
+func (d *DummyLogger) WithFields(fields map[string]interface{}) logger.Logger { return d }
+func (d *DummyLogger) WithContext(ctx context.Context) logger.Logger          { return d }
+func (d *DummyLogger) WithComponent(component string) logger.Logger           { return d }
+
+func TestValidateRead_Allowed(t *testing.T) {
+	mockEngine := new(MockSecurityRulesEngine)
+	logger := &DummyLogger{}
+	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
+	user := &model.User{ID: "user1"}
+	path := "projects/proj1/databases/db1/documents/doc1"
+	result := &repository.RuleEvaluationResult{Allowed: true, AllowedBy: "rule1"}
+	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(result, nil)
+	err := uc.ValidateRead(context.Background(), user, path)
+	assert.NoError(t, err)
+	mockEngine.AssertExpectations(t)
 }
 
-func BenchmarkSecurityUsecase_ValidateWrite(b *testing.B) {
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-	data := map[string]interface{}{"field": "value"}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		uc.ValidateWrite(ctx, userID, path, data)
-	}
+func TestValidateRead_Denied(t *testing.T) {
+	mockEngine := new(MockSecurityRulesEngine)
+	logger := &DummyLogger{}
+	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
+	user := &model.User{ID: "user1"}
+	path := "projects/proj1/databases/db1/documents/doc1"
+	result := &repository.RuleEvaluationResult{Allowed: false, DeniedBy: "rule2", Reason: "forbidden"}
+	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(result, nil)
+	err := uc.ValidateRead(context.Background(), user, path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "access denied")
+	mockEngine.AssertExpectations(t)
 }
 
-func BenchmarkSecurityUsecase_ValidateDelete(b *testing.B) {
-	uc := usecase.NewSecurityUsecase(&mockSecurityLogger{})
-	ctx := context.Background()
-	userID := "user-123"
-	path := "documents/doc1"
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		uc.ValidateDelete(ctx, userID, path)
-	}
+func TestValidateRead_EvaluateError(t *testing.T) {
+	mockEngine := new(MockSecurityRulesEngine)
+	logger := &DummyLogger{}
+	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
+	user := &model.User{ID: "user1"}
+	path := "projects/proj1/databases/db1/documents/doc1"
+	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(nil, errors.New("engine error"))
+	err := uc.ValidateRead(context.Background(), user, path)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "security rules evaluation failed")
+	mockEngine.AssertExpectations(t)
 }

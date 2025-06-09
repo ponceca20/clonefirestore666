@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -12,21 +13,32 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// Firestore project ID validation regex
+var (
+	projectIDRegex  = regexp.MustCompile(`^[a-z][-a-z0-9]{4,28}[a-z0-9]$`)
+	databaseIDRegex = regexp.MustCompile(`^[a-z][-a-z0-9]{0,62}[a-z0-9]$`)
+)
+
 // --- DTOs ---
 
-// RegisterRequest defines the structure for user registration.
+// RegisterRequest defines the structure for user registration with Firestore context.
 type RegisterRequest struct {
-	Email     string `json:"email" validate:"required,email"`
-	Password  string `json:"password" validate:"required,min=8"`
-	FirstName string `json:"firstName" validate:"required"`
-	LastName  string `json:"lastName" validate:"required"`
-	AvatarURL string `json:"avatarUrl,omitempty" validate:"omitempty,url"` // omitempty for request, url validation if provided
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required,min=8"`
+	ProjectID  string `json:"projectId" validate:"required"`
+	DatabaseID string `json:"databaseId" validate:"required"`
+	TenantID   string `json:"tenantId,omitempty"`
+	FirstName  string `json:"firstName" validate:"required"`
+	LastName   string `json:"lastName" validate:"required"`
+	AvatarURL  string `json:"avatarUrl,omitempty" validate:"omitempty,url"`
 }
 
-// LoginRequest defines the structure for user login.
+// LoginRequest defines the structure for user login with Firestore context.
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
+	Email      string `json:"email" validate:"required,email"`
+	Password   string `json:"password" validate:"required"`
+	ProjectID  string `json:"projectId" validate:"required"`
+	DatabaseID string `json:"databaseId" validate:"required"`
 }
 
 // UserResponse is the DTO for user information.
@@ -133,7 +145,7 @@ func (h *AuthHTTPHandler) SetupAuthRoutesWithMiddleware(router fiber.Router, mid
 	}
 }
 
-// Register handles user registration.
+// Register handles user registration with Firestore project validation.
 func (h *AuthHTTPHandler) Register(c *fiber.Ctx) error {
 	var req RegisterRequest
 
@@ -145,10 +157,29 @@ func (h *AuthHTTPHandler) Register(c *fiber.Ctx) error {
 		return h.sendValidationErrorResponse(c, err)
 	}
 
-	// Assuming tenantID is handled or empty for now. The "" for tenantID is a placeholder.
-	// This needs to be correctly sourced if multi-tenancy is fully active at this endpoint.
-	// For this task, we'll assume it's either not required at this specific registration point or will be handled by a later step/context.
-	user, token, err := h.usecase.Register(c.Context(), req.Email, req.Password, "", req.FirstName, req.LastName, req.AvatarURL)
+	// Validate Firestore project ID format
+	if !projectIDRegex.MatchString(req.ProjectID) {
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format. Must follow Google Cloud project naming conventions", nil)
+	}
+
+	// Validate Firestore database ID format
+	if !databaseIDRegex.MatchString(req.DatabaseID) {
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", nil)
+	}
+
+	// Convert to usecase request format
+	ucReq := usecase.RegisterRequest{
+		Email:      req.Email,
+		Password:   req.Password,
+		ProjectID:  req.ProjectID,
+		DatabaseID: req.DatabaseID,
+		TenantID:   req.TenantID,
+		FirstName:  req.FirstName,
+		LastName:   req.LastName,
+		AvatarURL:  req.AvatarURL,
+	}
+
+	user, token, err := h.usecase.Register(c.Context(), ucReq)
 	if err != nil {
 		return h.mapAuthErrorToFiberError(c, err)
 	}
@@ -169,12 +200,28 @@ func (h *AuthHTTPHandler) Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid request payload", err)
 	}
-
 	if err := h.validate.Struct(&req); err != nil {
 		return h.sendValidationErrorResponse(c, err)
 	}
 
-	user, token, err := h.usecase.Login(c.Context(), req.Email, req.Password)
+	// Validate Firestore project ID format
+	if !projectIDRegex.MatchString(req.ProjectID) {
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format. Must follow Google Cloud project naming conventions", nil)
+	}
+
+	// Validate Firestore database ID format
+	if !databaseIDRegex.MatchString(req.DatabaseID) {
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", nil)
+	}
+
+	// Convert to usecase request format
+	ucReq := usecase.LoginRequest{
+		Email:      req.Email,
+		Password:   req.Password,
+		ProjectID:  req.ProjectID,
+		DatabaseID: req.DatabaseID,
+	}
+	user, token, err := h.usecase.Login(c.Context(), ucReq)
 	if err != nil {
 		return h.mapAuthErrorToFiberError(c, err)
 	}
@@ -327,22 +374,34 @@ func (h *AuthHTTPHandler) getValidationErrorMessage(err validator.FieldError) st
 	}
 }
 
-// mapAuthErrorToFiberError translates domain errors to HTTP responses.
+// mapAuthErrorToFiberError traduce errores de negocio a códigos HTTP correctos
 func (h *AuthHTTPHandler) mapAuthErrorToFiberError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, usecase.ErrEmailTaken):
-		return h.sendErrorResponse(c, fiber.StatusConflict, "Email already taken", err)
-	case errors.Is(err, usecase.ErrUserNotFound):
-		return h.sendErrorResponse(c, fiber.StatusNotFound, "User not found", err)
+		return h.sendErrorResponse(c, fiber.StatusConflict, "Email is already registered", err)
 	case errors.Is(err, usecase.ErrInvalidCredentials):
+		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
+	case errors.Is(err, usecase.ErrUserNotFound):
 		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
 	case errors.Is(err, usecase.ErrInvalidEmailFormat):
 		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid email format", err)
-	case errors.Is(err, usecase.ErrTokenInvalid):
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Token is invalid", err)
-	case errors.Is(err, usecase.ErrSessionNotFound):
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Session not found", err)
+	case errors.Is(err, usecase.ErrWeakPassword):
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Password does not meet strength requirements", err)
+	case errors.Is(err, usecase.ErrInvalidProjectID):
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format", err)
+	case errors.Is(err, usecase.ErrInvalidDatabaseID):
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", err)
+	case strings.Contains(err.Error(), "required"):
+		return h.sendErrorResponse(c, fiber.StatusBadRequest, err.Error(), err)
+	case strings.Contains(err.Error(), "failed to get user"):
+		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
+	case strings.Contains(err.Error(), "failed to check existing user"):
+		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
+	case strings.Contains(err.Error(), "failed to create user"):
+		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
+	case strings.Contains(err.Error(), "failed to generate token"):
+		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
 	default:
-		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "An unexpected error occurred", err)
+		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
 	}
 }

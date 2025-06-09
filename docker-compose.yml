@@ -1,0 +1,138 @@
+# Docker Compose configuration for Firestore Clone
+# Task 5: Complete development and production setup
+
+version: '3.8'
+
+services:
+  # MongoDB database service
+  mongodb:
+    image: mongo:7.0
+    container_name: firestore-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: Ponceca120
+      MONGO_INITDB_DATABASE: firestore_clone
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - firestore-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Firestore Clone application
+  firestore-clone:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: firestore-clone-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Server configuration
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 3000
+      
+      # Database configuration
+      MONGODB_URI: mongodb://admin:Ponceca120@mongodb:27017/firestore_clone?authSource=admin
+      DATABASE_NAME: firestore_clone
+      
+      # Authentication configuration
+      JWT_SECRET: your-super-secure-jwt-secret-change-in-production
+      JWT_EXPIRATION: 24h
+      BCRYPT_COST: 12
+      
+      # Logging configuration
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - firestore-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for caching (optional for future enhancement)
+  redis:
+    image: redis:7.2-alpine
+    container_name: firestore-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass redispassword
+    volumes:
+      - redis_data:/data
+    networks:
+      - firestore-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # MongoDB Express for database management (development only)
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: firestore-mongo-express
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: Ponceca120
+      ME_CONFIG_MONGODB_URL: mongodb://admin:Ponceca120@mongodb:27017/
+      ME_CONFIG_BASICAUTH: false
+    networks:
+      - firestore-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    profiles:
+      - development
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: firestore-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    networks:
+      - firestore-network
+    depends_on:
+      - firestore-clone
+    profiles:
+      - production
+
+# Networks
+networks:
+  firestore-network:
+    driver: bridge
+    name: firestore-network
+
+# Volumes
+volumes:
+  mongodb_data:
+    name: firestore_mongodb_data
+  redis_data:
+    name: firestore_redis_data
