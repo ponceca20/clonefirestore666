@@ -46,6 +46,9 @@ func DefaultBusConfig() BusConfig {
 
 // NewEventBus creates a new event bus instance
 func NewEventBus(log logger.Logger) *EventBus {
+	if log == nil {
+		log = &noopLogger{}
+	}
 	return NewEventBusWithConfig(log, DefaultBusConfig())
 }
 
@@ -243,3 +246,26 @@ const (
 	EventTypeUserLoggedOut         = "user.logged_out"
 	EventTypeSecurityRuleViolation = "security.rule_violation"
 )
+
+// noopLogger implements logger.Logger but does nothing (for nil logger)
+type noopLogger struct{}
+
+func (n *noopLogger) Debug(args ...interface{})                 {}
+func (n *noopLogger) Info(args ...interface{})                  {}
+func (n *noopLogger) Warn(args ...interface{})                  {}
+func (n *noopLogger) Error(args ...interface{})                 {}
+func (n *noopLogger) Fatal(args ...interface{})                 {}
+func (n *noopLogger) Debugf(format string, args ...interface{}) {}
+func (n *noopLogger) Infof(format string, args ...interface{})  {}
+func (n *noopLogger) Warnf(format string, args ...interface{})  {}
+func (n *noopLogger) Errorf(format string, args ...interface{}) {}
+func (n *noopLogger) Fatalf(format string, args ...interface{}) {}
+func (n *noopLogger) WithFields(fields map[string]interface{}) logger.Logger {
+	return n
+}
+func (n *noopLogger) WithContext(ctx context.Context) logger.Logger {
+	return n
+}
+func (n *noopLogger) WithComponent(component string) logger.Logger {
+	return n
+}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
@@ -13,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MockFirestoreUsecase mocks the FirestoreUsecaseInterface for handler tests
@@ -133,13 +135,27 @@ func (m *MockFirestoreUsecase) RunQueryLegacy(ctx context.Context, projectID str
 	return nil, args.Error(1)
 }
 
+func newTestDocument() *model.Document {
+	return &model.Document{
+		ID:           primitive.NewObjectID(),
+		ProjectID:    "p1",
+		DatabaseID:   "d1",
+		CollectionID: "c1",
+		DocumentID:   "doc1",
+		Fields:       map[string]*model.FieldValue{"field": model.NewFieldValue("value")},
+		CreateTime:   time.Now(),
+		UpdateTime:   time.Now(),
+		Exists:       true,
+	}
+}
+
 func TestCreateDocument_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
 	h := &HTTPHandler{FirestoreUC: mockUC}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID", h.CreateDocument)
 
-	mockUC.On("CreateDocument", mock.Anything, mock.Anything).Return(&model.Document{ID: "doc1"}, nil)
+	mockUC.On("CreateDocument", mock.Anything, mock.Anything).Return(newTestDocument(), nil)
 
 	req := httptest.NewRequest("POST", "/api/v1/firestore/projects/p1/databases/d1/documents/c1", strings.NewReader(`{"field":"value"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -178,7 +194,7 @@ func TestGetDocument_Success(t *testing.T) {
 	h := &HTTPHandler{FirestoreUC: mockUC}
 	app.Get("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.GetDocument)
 
-	mockUC.On("GetDocument", mock.Anything, mock.Anything).Return(&model.Document{ID: "doc1"}, nil)
+	mockUC.On("GetDocument", mock.Anything, mock.Anything).Return(newTestDocument(), nil)
 
 	req := httptest.NewRequest("GET", "/api/v1/firestore/projects/p1/databases/d1/documents/c1/doc1", nil)
 	resp, _ := app.Test(req)
@@ -204,7 +220,9 @@ func TestUpdateDocument_Success(t *testing.T) {
 	h := &HTTPHandler{FirestoreUC: mockUC}
 	app.Put("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.UpdateDocument)
 
-	mockUC.On("UpdateDocument", mock.Anything, mock.Anything).Return(&model.Document{ID: "doc1", Fields: map[string]interface{}{"field": "updated"}}, nil)
+	updatedDoc := newTestDocument()
+	updatedDoc.Fields = map[string]*model.FieldValue{"field": model.NewFieldValue("updated")}
+	mockUC.On("UpdateDocument", mock.Anything, mock.Anything).Return(updatedDoc, nil)
 
 	req := httptest.NewRequest("PUT", "/api/v1/firestore/projects/p1/databases/d1/documents/c1/doc1", strings.NewReader(`{"field":"updated"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -269,7 +287,7 @@ func TestQueryDocuments_Success(t *testing.T) {
 	h := &HTTPHandler{FirestoreUC: mockUC}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
-	mockUC.On("RunQuery", mock.Anything, mock.Anything).Return([]*model.Document{{ID: "doc1"}}, nil)
+	mockUC.On("RunQuery", mock.Anything, mock.Anything).Return([]*model.Document{newTestDocument()}, nil)
 
 	req := httptest.NewRequest("POST", "/api/v1/firestore/projects/p1/databases/d1/query/c1", strings.NewReader(`{"filters":[]}`))
 	req.Header.Set("Content-Type", "application/json")

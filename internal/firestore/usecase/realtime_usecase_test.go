@@ -46,7 +46,8 @@ func TestRealtimeUsecase_SubscribeUnsubscribe(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
 	subscriberID1 := "client1"
-	path1 := "docs/doc1"
+	// Usar path completo
+	path1 := "projects/test-project/databases/test-db/documents/docs/doc1"
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 
 	err := rtu.Subscribe(ctx, subscriberID1, path1, eventChan1)
@@ -69,7 +70,7 @@ func TestRealtimeUsecase_SubscribeUnsubscribe(t *testing.T) {
 	err = rtu.Unsubscribe(ctx, "nonExistentClient", path1)
 	require.NoError(t, err, "Unsubscribing a non-existent client should be graceful")
 
-	err = rtu.Unsubscribe(ctx, subscriberID1, "nonExistentPath")
+	err = rtu.Unsubscribe(ctx, subscriberID1, "projects/test-project/databases/test-db/documents/nonExistentPath")
 	require.NoError(t, err, "Unsubscribing from a non-existent path should be graceful")
 }
 
@@ -77,16 +78,16 @@ func TestRealtimeUsecase_PublishEvent_SingleSubscriber(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
 	subscriberID1 := "client1"
-	path1 := "docs/doc1"
+	path1 := "projects/test-project/databases/test-db/documents/docs/doc1"
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 	rtu.Subscribe(ctx, subscriberID1, path1, eventChan1)
 
 	event := model.RealtimeEvent{
 		Type:         model.EventTypeUpdated,
-		FullPath:     "projects/test-project/databases/test-db/documents/" + path1,
+		FullPath:     path1,
 		ProjectID:    "test-project",
 		DatabaseID:   "test-db",
-		DocumentPath: path1,
+		DocumentPath: "docs/doc1",
 		Data:         map[string]interface{}{"key": "value"},
 		Timestamp:    time.Now(),
 	}
@@ -104,7 +105,7 @@ func TestRealtimeUsecase_PublishEvent_SingleSubscriber(t *testing.T) {
 func TestRealtimeUsecase_PublishEvent_MultipleSubscribersSamePath(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
-	path1 := "docs/doc1"
+	path1 := "projects/test-project/databases/test-db/documents/docs/doc1"
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 	eventChan2 := make(chan model.RealtimeEvent, 1)
 	rtu.Subscribe(ctx, "client1", path1, eventChan1)
@@ -112,10 +113,10 @@ func TestRealtimeUsecase_PublishEvent_MultipleSubscribersSamePath(t *testing.T) 
 
 	event := model.RealtimeEvent{
 		Type:         model.EventTypeUpdated,
-		FullPath:     "projects/test-project/databases/test-db/documents/" + path1,
+		FullPath:     path1,
 		ProjectID:    "test-project",
 		DatabaseID:   "test-db",
-		DocumentPath: path1,
+		DocumentPath: "docs/doc1",
 		Data:         map[string]interface{}{"key": "value"},
 		Timestamp:    time.Now(),
 	}
@@ -149,12 +150,14 @@ func TestRealtimeUsecase_PublishEvent_DifferentPaths(t *testing.T) {
 	ctx := context.Background()
 	eventChan1 := make(chan model.RealtimeEvent, 1)
 	eventChan2 := make(chan model.RealtimeEvent, 1) // For a different path
-	rtu.Subscribe(ctx, "client1", "path1", eventChan1)
-	rtu.Subscribe(ctx, "client2", "path2", eventChan2)
+	path1 := "projects/test-project/databases/test-db/documents/path1"
+	path2 := "projects/test-project/databases/test-db/documents/path2"
+	rtu.Subscribe(ctx, "client1", path1, eventChan1)
+	rtu.Subscribe(ctx, "client2", path2, eventChan2)
 
 	eventForPath1 := model.RealtimeEvent{
 		Type:         model.EventTypeUpdated,
-		FullPath:     "projects/test-project/databases/test-db/documents/path1",
+		FullPath:     path1,
 		ProjectID:    "test-project",
 		DatabaseID:   "test-db",
 		DocumentPath: "path1",
@@ -200,7 +203,7 @@ func TestRealtimeUsecase_Subscribe_OverwriteSubscription(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
 	subscriberID := "client1"
-	path := "docs/doc1"
+	path := "projects/test-project/databases/test-db/documents/docs/doc1"
 	eventChanOld := make(chan model.RealtimeEvent, 1)
 	eventChanNew := make(chan model.RealtimeEvent, 1)
 
@@ -244,7 +247,7 @@ func TestRealtimeUsecase_PublishEvent_ChannelFull(t *testing.T) {
 	rtu := newTestRealtimeUsecase(t)
 	ctx := context.Background()
 	subscriberID := "client_slow"
-	path := "docs/doc_slow"
+	path := "projects/test-project/databases/test-db/documents/docs/doc_slow"
 	// Unbuffered channel to simulate immediate blocking
 	eventChan := make(chan model.RealtimeEvent)
 	err := rtu.Subscribe(ctx, subscriberID, path, eventChan)

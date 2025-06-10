@@ -2,10 +2,12 @@ package mongodb
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
+	"firestore-clone/internal/shared/logger"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -13,14 +15,63 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// IndexOperations handles index management operations
-type IndexOperations struct {
-	repo *DocumentRepository
+// Index operation errors
+var (
+	ErrIndexAlreadyExists = errors.New("index already exists")
+	ErrIndexNotFound      = errors.New("index not found")
+)
+
+// --- Interfaces para testabilidad y hexagonalidad ---
+type IndexCollection interface {
+	CountDocuments(ctx context.Context, filter interface{}) (int64, error)
+	InsertOne(ctx context.Context, doc interface{}) (interface{}, error)
+	DeleteOne(ctx context.Context, filter interface{}) (DeleteResult, error)
+	UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResult, error)
+	Find(ctx context.Context, filter interface{}) (Cursor, error)
+	FindOne(ctx context.Context, filter interface{}) SingleResult
 }
 
-// NewIndexOperations creates a new IndexOperations instance
-func NewIndexOperations(repo *DocumentRepository) *IndexOperations {
-	return &IndexOperations{repo: repo}
+type DocumentCollection interface {
+	Indexes() IndexManager
+	CountDocuments(ctx context.Context, filter interface{}) (int64, error) // Añadido para estadísticas
+}
+
+type IndexManager interface {
+	CreateOne(ctx context.Context, model interface{}) (interface{}, error)
+	DropOne(ctx context.Context, name string) (interface{}, error)
+	ListSpecifications(ctx context.Context) ([]IndexSpec, error)
+}
+
+type Cursor interface {
+	Next(ctx context.Context) bool
+	Decode(val interface{}) error
+	Close(ctx context.Context) error
+	Err() error
+}
+
+type SingleResult interface {
+	Decode(val interface{}) error
+}
+
+type DeleteResult struct{ DeletedCount int64 }
+type UpdateResult struct{}
+type IndexSpec struct{ Name string }
+
+// IndexOperations refactorizado para usar interfaces
+// IndexOperations handles index management operations
+type IndexOperations struct {
+	indexesCol   IndexCollection
+	documentsCol DocumentCollection
+	logger       logger.Logger
+}
+
+// NewIndexOperations crea una nueva instancia inyectando dependencias
+func NewIndexOperations(indexesCol IndexCollection, documentsCol DocumentCollection, logger logger.Logger) *IndexOperations {
+	return &IndexOperations{
+		indexesCol:   indexesCol,
+		documentsCol: documentsCol,
+		logger:       logger,
+	}
 }
 
 // CreateIndex creates a new index for a collection
@@ -35,7 +86,7 @@ func (i *IndexOperations) CreateIndex(ctx context.Context, projectID, databaseID
 		"name":          index.Name,
 	}
 
-	count, err := i.repo.indexesCol.CountDocuments(ctx, filter)
+	count, err := i.indexesCol.CountDocuments(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to check index existence: %w", err)
 	}
@@ -54,7 +105,7 @@ func (i *IndexOperations) CreateIndex(ctx context.Context, projectID, databaseID
 		UpdatedAt:  now,
 	}
 	// Create index document
-	_, err = i.repo.indexesCol.InsertOne(ctx, indexDoc)
+	_, err = i.indexesCol.InsertOne(ctx, indexDoc)
 	if err != nil {
 		return fmt.Errorf("failed to create index document: %w", err)
 	}
@@ -63,7 +114,7 @@ func (i *IndexOperations) CreateIndex(ctx context.Context, projectID, databaseID
 	err = i.createMongoDBIndex(ctx, projectID, databaseID, collectionID, index)
 	if err != nil {
 		// Rollback: delete the index document
-		i.repo.indexesCol.DeleteOne(ctx, filter)
+		i.indexesCol.DeleteOne(ctx, filter)
 		return fmt.Errorf("failed to create MongoDB index: %w", err)
 	}
 
@@ -73,7 +124,7 @@ func (i *IndexOperations) CreateIndex(ctx context.Context, projectID, databaseID
 			"state": model.IndexStateReady,
 		},
 	}
-	i.repo.indexesCol.UpdateOne(ctx, filter, updateDoc)
+	i.indexesCol.UpdateOne(ctx, filter, updateDoc)
 
 	return nil
 }
@@ -89,7 +140,7 @@ func (i *IndexOperations) DeleteIndex(ctx context.Context, projectID, databaseID
 	}
 
 	var index model.CollectionIndex
-	err := i.repo.indexesCol.FindOne(ctx, filter).Decode(&index)
+	err := i.indexesCol.FindOne(ctx, filter).Decode(&index)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return ErrIndexNotFound
@@ -104,7 +155,7 @@ func (i *IndexOperations) DeleteIndex(ctx context.Context, projectID, databaseID
 	}
 
 	// Delete the index document
-	result, err := i.repo.indexesCol.DeleteOne(ctx, filter)
+	result, err := i.indexesCol.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to delete index document: %w", err)
 	}
@@ -124,7 +175,7 @@ func (i *IndexOperations) ListIndexes(ctx context.Context, projectID, databaseID
 		"collection_id": collectionID,
 	}
 
-	cursor, err := i.repo.indexesCol.Find(ctx, filter)
+	cursor, err := i.indexesCol.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list indexes: %w", err)
 	}
@@ -134,7 +185,7 @@ func (i *IndexOperations) ListIndexes(ctx context.Context, projectID, databaseID
 	for cursor.Next(ctx) {
 		var index model.CollectionIndex
 		if err := cursor.Decode(&index); err != nil {
-			i.repo.logger.Error("Failed to decode index: %v", err)
+			i.logger.Errorf("Failed to decode index: %v", err)
 			continue
 		}
 		indexes = append(indexes, &index)
@@ -157,7 +208,7 @@ func (i *IndexOperations) GetIndex(ctx context.Context, projectID, databaseID, c
 	}
 
 	var index model.CollectionIndex
-	err := i.repo.indexesCol.FindOne(ctx, filter).Decode(&index)
+	err := i.indexesCol.FindOne(ctx, filter).Decode(&index)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return nil, ErrIndexNotFound
@@ -184,7 +235,7 @@ func (i *IndexOperations) createMongoDBIndex(ctx context.Context, projectID, dat
 	indexOptions := options.Index().SetName(index.Name)
 
 	// Create the index on the documents collection
-	_, err := i.repo.documentsCol.Indexes().CreateOne(ctx, mongo.IndexModel{
+	_, err := i.documentsCol.Indexes().CreateOne(ctx, mongo.IndexModel{
 		Keys:    indexKeys,
 		Options: indexOptions,
 	})
@@ -194,7 +245,7 @@ func (i *IndexOperations) createMongoDBIndex(ctx context.Context, projectID, dat
 
 // deleteMongoDBIndex deletes the actual MongoDB index
 func (i *IndexOperations) deleteMongoDBIndex(ctx context.Context, projectID, databaseID, collectionID, indexName string) error {
-	_, err := i.repo.documentsCol.Indexes().DropOne(ctx, indexName)
+	_, err := i.documentsCol.Indexes().DropOne(ctx, indexName)
 	return err
 }
 
@@ -219,7 +270,7 @@ func (i *IndexOperations) RebuildIndex(ctx context.Context, projectID, databaseI
 		},
 	}
 
-	_, err = i.repo.indexesCol.UpdateOne(ctx, filter, updateDoc)
+	_, err = i.indexesCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to update index state: %w", err)
 	}
@@ -227,20 +278,20 @@ func (i *IndexOperations) RebuildIndex(ctx context.Context, projectID, databaseI
 	// Drop and recreate the MongoDB index
 	err = i.deleteMongoDBIndex(ctx, projectID, databaseID, collectionID, index.Name)
 	if err != nil {
-		i.repo.logger.Warn("Failed to drop existing index during rebuild: %v", err)
+		i.logger.Warnf("Failed to drop existing index during rebuild: %v", err)
 	}
 
 	err = i.createMongoDBIndex(ctx, projectID, databaseID, collectionID, index)
 	if err != nil {
 		// Set state to error
 		updateDoc["$set"] = bson.M{"state": model.IndexStateError}
-		i.repo.indexesCol.UpdateOne(ctx, filter, updateDoc)
+		i.indexesCol.UpdateOne(ctx, filter, updateDoc)
 		return fmt.Errorf("failed to recreate index: %w", err)
 	}
 
 	// Set state to ready
 	updateDoc["$set"] = bson.M{"state": model.IndexStateReady}
-	_, err = i.repo.indexesCol.UpdateOne(ctx, filter, updateDoc)
+	_, err = i.indexesCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to update index state to ready: %w", err)
 	}
@@ -257,34 +308,27 @@ func (i *IndexOperations) GetIndexStatistics(ctx context.Context, projectID, dat
 	}
 
 	// Get MongoDB index statistics
-	indexStats, err := i.repo.documentsCol.Indexes().ListSpecifications(ctx)
+	indexStats, err := i.documentsCol.Indexes().ListSpecifications(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get index specifications: %w", err)
 	}
 	// Find our index and calculate statistics
 	for _, spec := range indexStats {
 		if spec.Name == index.Name {
-			// Get actual statistics from MongoDB
-			collection := i.repo.db.Collection("documents")
-
-			// Calculate document count for this collection
+			// Calculate document count for this collection using injected interface
 			filter := bson.M{
 				"project_id":    projectID,
 				"database_id":   databaseID,
 				"collection_id": collectionID,
 			}
 
-			docCount, err := collection.CountDocuments(ctx, filter)
+			docCount, err := i.indexesCol.CountDocuments(ctx, filter)
 			if err != nil {
-				// Log error but don't fail completely
-				docCount = 0
+				docCount = 0 // Log error but don't fail completely
 			}
 
 			// Get storage size estimate (simplified calculation)
-			// In a real implementation, you might use collection stats
 			storageSize := docCount * 1024 // Estimate 1KB per document
-			// Get index creation time as last used (approximate)
-			// Since CollectionIndex doesn't have CreatedAt field, use current time
 			lastUsed := time.Now()
 
 			stats := &model.IndexStatistics{

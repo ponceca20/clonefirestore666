@@ -8,16 +8,27 @@ import (
 	"firestore-clone/internal/firestore/domain/model"
 
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// CollectionUpdater abstracts the UpdateOne method for testability
+// (If using mockery for mocks, otherwise define manually in test)
+//
+//go:generate mockery --name=CollectionUpdater --output=./mocks --case=underscore
+type CollectionUpdater interface {
+	UpdateOne(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
+}
+
 // AtomicOperations handles atomic document operations
+// Accepts a CollectionUpdater for testability
 type AtomicOperations struct {
-	repo *DocumentRepository
+	documentsCol CollectionUpdater
 }
 
 // NewAtomicOperations creates a new AtomicOperations instance
-func NewAtomicOperations(repo *DocumentRepository) *AtomicOperations {
-	return &AtomicOperations{repo: repo}
+func NewAtomicOperations(col CollectionUpdater) *AtomicOperations {
+	return &AtomicOperations{documentsCol: col}
 }
 
 // AtomicIncrement performs an atomic increment operation on a numeric field
@@ -38,9 +49,8 @@ func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, datab
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic increment
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic increment: %w", err)
 	}
@@ -78,15 +88,14 @@ func (a *AtomicOperations) AtomicArrayUnion(ctx context.Context, projectID, data
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic array union
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic array union: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
@@ -116,15 +125,14 @@ func (a *AtomicOperations) AtomicArrayRemove(ctx context.Context, projectID, dat
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic array remove
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic array remove: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
@@ -151,15 +159,14 @@ func (a *AtomicOperations) AtomicServerTimestamp(ctx context.Context, projectID,
 			"update_time": now,
 		},
 	}
-
 	// Execute the atomic server timestamp
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic server timestamp: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
@@ -186,15 +193,14 @@ func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, database
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic field deletion
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic field deletion: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
@@ -220,9 +226,8 @@ func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, data
 			"update_time":                   time.Now(),
 		},
 	}
-
 	// Execute the conditional set operation
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic set if empty: %w", err)
 	}
@@ -251,15 +256,14 @@ func (a *AtomicOperations) AtomicMaximum(ctx context.Context, projectID, databas
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic maximum operation
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic maximum: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
@@ -282,15 +286,14 @@ func (a *AtomicOperations) AtomicMinimum(ctx context.Context, projectID, databas
 			"update_time": time.Now(),
 		},
 	}
-
 	// Execute the atomic minimum operation
-	result, err := a.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic minimum: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
