@@ -103,7 +103,7 @@ func (p *ProjectDatabaseOperations) DeleteProject(ctx context.Context, projectID
 	dbFilter := bson.M{"project_id": projectID}
 	dbCount, err := p.dbCol.CountDocuments(ctx, dbFilter)
 	if err != nil {
-		return fmt.Errorf("failed to check project databases: %w", err)
+		return fmt.Errorf("failed to check databases count: %w", err)
 	}
 	if dbCount > 0 {
 		return fmt.Errorf("cannot delete project with existing databases")
@@ -136,8 +136,7 @@ func (p *ProjectDatabaseOperations) ListProjects(ctx context.Context, ownerEmail
 	for cursor.Next(ctx) {
 		var project model.Project
 		if err := cursor.Decode(&project); err != nil {
-			p.repo.logger.Error("Failed to decode project: %v", err)
-			continue
+			return nil, fmt.Errorf("failed to decode project: %w", err)
 		}
 		projects = append(projects, &project)
 	}
@@ -154,11 +153,13 @@ func (p *ProjectDatabaseOperations) ListProjects(ctx context.Context, ownerEmail
 // CreateDatabase creates a new database
 func (p *ProjectDatabaseOperations) CreateDatabase(ctx context.Context, projectID string, database *model.Database) error {
 	now := time.Now()
+
 	// Check if database already exists
 	filter := bson.M{
 		"project_id":  projectID,
 		"database_id": database.DatabaseID,
 	}
+
 	count, err := p.dbCol.CountDocuments(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to check database existence: %w", err)
@@ -166,13 +167,13 @@ func (p *ProjectDatabaseOperations) CreateDatabase(ctx context.Context, projectI
 	if count > 0 {
 		return fmt.Errorf("database already exists")
 	}
+
 	// Set metadata
+	database.ID = primitive.NewObjectID()
 	database.ProjectID = projectID
 	database.CreatedAt = now
 	database.UpdatedAt = now
-	if database.DatabaseID == "" {
-		database.DatabaseID = "(default)" // Firestore default database
-	}
+	database.State = model.DatabaseStateActive
 
 	_, err = p.dbCol.InsertOne(ctx, database)
 	if err != nil {
@@ -212,7 +213,6 @@ func (p *ProjectDatabaseOperations) UpdateDatabase(ctx context.Context, projectI
 		"$set": bson.M{
 			"display_name": database.DisplayName,
 			"location_id":  database.LocationID,
-			"type":         database.Type,
 			"updated_at":   time.Now(),
 		},
 	}
@@ -232,15 +232,16 @@ func (p *ProjectDatabaseOperations) UpdateDatabase(ctx context.Context, projectI
 // DeleteDatabase deletes a database by ID
 func (p *ProjectDatabaseOperations) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
 	// Check if database has any collections
-	colFilter := bson.M{
+	collectionFilter := bson.M{
 		"project_id":  projectID,
 		"database_id": databaseID,
 	}
-	colCount, err := p.repo.collectionsCol.CountDocuments(ctx, colFilter)
+
+	collectionCount, err := p.repo.collectionsCol.CountDocuments(ctx, collectionFilter)
 	if err != nil {
-		return fmt.Errorf("failed to check database collections: %w", err)
+		return fmt.Errorf("failed to check collections count: %w", err)
 	}
-	if colCount > 0 {
+	if collectionCount > 0 {
 		return fmt.Errorf("cannot delete database with existing collections")
 	}
 
@@ -248,6 +249,7 @@ func (p *ProjectDatabaseOperations) DeleteDatabase(ctx context.Context, projectI
 		"project_id":  projectID,
 		"database_id": databaseID,
 	}
+
 	result, err := p.dbCol.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to delete database: %w", err)
@@ -274,8 +276,7 @@ func (p *ProjectDatabaseOperations) ListDatabases(ctx context.Context, projectID
 	for cursor.Next(ctx) {
 		var database model.Database
 		if err := cursor.Decode(&database); err != nil {
-			p.repo.logger.Error("Failed to decode database: %v", err)
-			continue
+			return nil, fmt.Errorf("failed to decode database: %w", err)
 		}
 		databases = append(databases, &database)
 	}

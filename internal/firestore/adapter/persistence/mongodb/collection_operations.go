@@ -11,21 +11,20 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// CollectionOperations handles collection-related operations
+// CollectionOperations handles collection-related operations for Firestore clone.
 type CollectionOperations struct {
 	repo *DocumentRepository
 }
 
-// NewCollectionOperations creates a new CollectionOperations instance
+// NewCollectionOperations creates a new CollectionOperations instance.
 func NewCollectionOperations(repo *DocumentRepository) *CollectionOperations {
 	return &CollectionOperations{repo: repo}
 }
 
-// CreateCollection creates a new collection
+// CreateCollection creates a new collection document in the database.
 func (c *CollectionOperations) CreateCollection(ctx context.Context, projectID, databaseID string, collection *model.Collection) error {
 	now := time.Now()
 
-	// Check if collection already exists
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
@@ -39,7 +38,7 @@ func (c *CollectionOperations) CreateCollection(ctx context.Context, projectID, 
 	if count > 0 {
 		return ErrCollectionAlreadyExists
 	}
-	// Create collection document
+
 	collectionDoc := &model.Collection{
 		ID:            collection.ID,
 		ProjectID:     projectID,
@@ -59,7 +58,7 @@ func (c *CollectionOperations) CreateCollection(ctx context.Context, projectID, 
 	return nil
 }
 
-// GetCollection retrieves a collection by ID
+// GetCollection retrieves a collection by ID.
 func (c *CollectionOperations) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*model.Collection, error) {
 	filter := bson.M{
 		"project_id":    projectID,
@@ -79,7 +78,7 @@ func (c *CollectionOperations) GetCollection(ctx context.Context, projectID, dat
 	return &collection, nil
 }
 
-// UpdateCollection updates a collection
+// UpdateCollection updates a collection's display name and description.
 func (c *CollectionOperations) UpdateCollection(ctx context.Context, projectID, databaseID string, collection *model.Collection) error {
 	filter := bson.M{
 		"project_id":    projectID,
@@ -100,32 +99,29 @@ func (c *CollectionOperations) UpdateCollection(ctx context.Context, projectID, 
 		return fmt.Errorf("failed to update collection: %w", err)
 	}
 
-	if updateResult.MatchedCount == 0 {
+	if updateResult.Matched() == 0 {
 		return ErrCollectionNotFound
 	}
 
 	return nil
 }
 
-// DeleteCollection deletes a collection by ID
+// DeleteCollection deletes a collection by ID. Fails if documents exist in the collection.
 func (c *CollectionOperations) DeleteCollection(ctx context.Context, projectID, databaseID, collectionID string) error {
-	// First check if collection has any documents
+	// Check if collection has any documents
 	docFilter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 	}
-
 	docCount, err := c.repo.documentsCol.CountDocuments(ctx, docFilter)
 	if err != nil {
-		return fmt.Errorf("failed to check collection documents: %w", err)
+		return fmt.Errorf("failed to check documents count: %w", err)
 	}
-
 	if docCount > 0 {
 		return fmt.Errorf("cannot delete collection with existing documents")
 	}
 
-	// Delete the collection
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
@@ -137,14 +133,14 @@ func (c *CollectionOperations) DeleteCollection(ctx context.Context, projectID, 
 		return fmt.Errorf("failed to delete collection: %w", err)
 	}
 
-	if deleteResult.DeletedCount == 0 {
+	if deleteResult.Deleted() == 0 {
 		return ErrCollectionNotFound
 	}
 
 	return nil
 }
 
-// ListCollections lists all collections in a database
+// ListCollections lists all collections in a database.
 func (c *CollectionOperations) ListCollections(ctx context.Context, projectID, databaseID string) ([]*model.Collection, error) {
 	filter := bson.M{
 		"project_id":  projectID,
@@ -161,8 +157,7 @@ func (c *CollectionOperations) ListCollections(ctx context.Context, projectID, d
 	for cursor.Next(ctx) {
 		var collection model.Collection
 		if err := cursor.Decode(&collection); err != nil {
-			c.repo.logger.Error("Failed to decode collection: %v", err)
-			continue
+			return nil, fmt.Errorf("failed to decode collection: %w", err)
 		}
 		collections = append(collections, &collection)
 	}
@@ -174,57 +169,18 @@ func (c *CollectionOperations) ListCollections(ctx context.Context, projectID, d
 	return collections, nil
 }
 
-// ListSubcollections lists all subcollections under a document
+// ListSubcollections lists all subcollections under a document.
 func (c *CollectionOperations) ListSubcollections(ctx context.Context, projectID, databaseID, collectionID, documentID string) ([]string, error) {
-	// Build the parent path
 	parentPath := fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID)
 
-	// Aggregation pipeline to find subcollections
 	pipeline := mongo.Pipeline{
-		{
-			{Key: "$match", Value: bson.D{
-				{Key: "project_id", Value: projectID},
-				{Key: "database_id", Value: databaseID},
-				{Key: "path", Value: bson.D{{Key: "$regex", Value: "^" + parentPath + "/"}}},
-			}},
-		},
-		{
-			{Key: "$addFields", Value: bson.D{
-				{Key: "subcollectionPath", Value: bson.D{
-					{Key: "$arrayElemAt", Value: bson.A{
-						bson.D{{Key: "$split", Value: bson.A{"$path", parentPath + "/"}}},
-						1,
-					}},
-				}},
-			}},
-		},
-		{
-			{Key: "$addFields", Value: bson.D{
-				{Key: "subcollectionId", Value: bson.D{
-					{Key: "$arrayElemAt", Value: bson.A{
-						bson.D{{Key: "$split", Value: bson.A{"$subcollectionPath", "/"}}},
-						0,
-					}},
-				}},
-			}},
-		},
-		{
-			{Key: "$match", Value: bson.D{
-				{Key: "subcollectionId", Value: bson.D{{Key: "$ne", Value: ""}}},
-			}},
-		},
-		{
-			{Key: "$group", Value: bson.D{
-				{Key: "_id", Value: "$subcollectionId"},
-				{Key: "count", Value: bson.D{{Key: "$sum", Value: 1}}},
-			}},
-		},
-		{
-			{Key: "$project", Value: bson.D{
-				{Key: "subcollectionId", Value: "$_id"},
-				{Key: "_id", Value: 0},
-			}},
-		},
+		{{Key: "$match", Value: bson.M{
+			"parent_path": bson.M{"$regex": "^" + parentPath},
+		}}},
+		{{Key: "$group", Value: bson.M{
+			"_id": "$collection_id",
+		}}},
+		{{Key: "$sort", Value: bson.M{"_id": 1}}},
 	}
 
 	cursor, err := c.repo.documentsCol.Aggregate(ctx, pipeline)
@@ -233,26 +189,26 @@ func (c *CollectionOperations) ListSubcollections(ctx context.Context, projectID
 	}
 	defer cursor.Close(ctx)
 
-	var subcollectionNames []string
+	var subcollections []string
 	for cursor.Next(ctx) {
 		var result struct {
-			SubcollectionID string `bson:"subcollectionId"`
+			ID string `bson:"_id"`
 		}
 		if err := cursor.Decode(&result); err != nil {
-			c.repo.logger.Error("Failed to decode subcollection: %v", err)
-			continue
+			return nil, fmt.Errorf("failed to decode subcollection: %w", err)
 		}
-		subcollectionNames = append(subcollectionNames, result.SubcollectionID)
+		subcollections = append(subcollections, result.ID)
 	}
 
 	if err := cursor.Err(); err != nil {
 		return nil, fmt.Errorf("cursor error: %w", err)
 	}
 
-	return subcollectionNames, nil
+	return subcollections, nil
 }
 
 // Additional collection-related errors
 var (
 	ErrCollectionAlreadyExists = fmt.Errorf("collection already exists")
+	// ErrCollectionNotFound is defined in document_repo.go, do not redeclare here
 )

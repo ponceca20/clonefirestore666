@@ -19,9 +19,10 @@ const (
 	// Request-related context keys
 	RequestIDKey = contextKey("requestID")
 
-	// Firestore-specific context keys
-	ProjectIDKey  = contextKey("projectID")
-	DatabaseIDKey = contextKey("databaseID")
+	// Firestore hierarchy context keys (following Firestore's exact hierarchy)
+	OrganizationIDKey = contextKey("organizationID") // NEW: Top-level organization
+	ProjectIDKey      = contextKey("projectID")      // Project within organization
+	DatabaseIDKey     = contextKey("databaseID")     // Database within project
 
 	// Authentication context keys
 	TokenKey  = contextKey("token")

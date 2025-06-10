@@ -60,14 +60,15 @@ func (suite *AuthIntegrationTestSuite) SetupSuite() {
 		CookiePath:     "/",
 		CookieDomain:   "",
 		CookieSecure:   false,
-		CookieHTTPOnly: true,
-		CookieSameSite: "Lax",
+		CookieHTTPOnly: true, CookieSameSite: "Lax",
 	}
 	module, err := auth.NewAuthModule(db, cfg)
 	assert.NoError(suite.T(), err)
 	suite.module = module
 	suite.app = fiber.New()
-	suite.module.RegisterRoutes(suite.app)
+	// Register auth routes under /auth prefix
+	authGroup := suite.app.Group("/auth")
+	suite.module.RegisterRoutes(authGroup)
 	suite.testData = testutil.NewTestData()
 	// Clean test DB before each suite (manual cleanup if needed)
 	db.Collection("users").Drop(context.Background())
@@ -86,6 +87,7 @@ func (suite *AuthIntegrationTestSuite) TestRegisterAndLogin_Success() {
 		"password":   "Password123!",
 		"projectId":  "test-project-123",
 		"databaseId": "test-database",
+		"tenantId":   "test-tenant",
 		"firstName":  "Integration",
 		"lastName":   "Test",
 	}
@@ -104,13 +106,13 @@ func (suite *AuthIntegrationTestSuite) TestRegisterAndLogin_Success() {
 	}
 
 	assert.Equal(suite.T(), http.StatusCreated, resp.StatusCode)
-
 	// Login
 	loginReq := map[string]interface{}{
 		"email":      "integration@example.com",
 		"password":   "Password123!",
 		"projectId":  "test-project-123",
 		"databaseId": "test-database",
+		"tenantId":   "test-tenant",
 	}
 	body, _ = json.Marshal(loginReq)
 	req = httptest.NewRequest(http.MethodPost, "/auth/login", jsonBody(body))
@@ -131,9 +133,8 @@ func (suite *AuthIntegrationTestSuite) TestRegisterAndLogin_Success() {
 
 func (suite *AuthIntegrationTestSuite) TestRegister_DuplicateEmail() {
 	user := suite.testData.Users.UserWithEmail("dup@example.com")
-	// Set valid project and database IDs
-	user.ProjectID = "test-project-123"
-	user.DatabaseID = "test-database"
+	// Set valid tenant ID (ProjectID/DatabaseID are not part of User struct)
+	user.TenantID = "test-tenant-123"
 	db := suite.database
 	db.Collection("users").InsertOne(context.Background(), user)
 	registerReq := map[string]interface{}{
@@ -141,6 +142,7 @@ func (suite *AuthIntegrationTestSuite) TestRegister_DuplicateEmail() {
 		"password":   "Password123!",
 		"projectId":  "test-project-123",
 		"databaseId": "test-database",
+		"tenantId":   "test-tenant-123",
 		"firstName":  "Dup",
 		"lastName":   "User",
 	}
@@ -158,6 +160,7 @@ func (suite *AuthIntegrationTestSuite) TestLogin_InvalidCredentials() {
 		"password":   "WrongPass!",
 		"projectId":  "test-project-123",
 		"databaseId": "test-database",
+		"tenantId":   "test-tenant",
 	}
 	body, _ := json.Marshal(loginReq)
 	req := httptest.NewRequest(http.MethodPost, "/auth/login", jsonBody(body))

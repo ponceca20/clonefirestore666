@@ -42,9 +42,12 @@ func NewWebSocketHandler(
 }
 
 // RegisterRoutes registers the WebSocket endpoint.
-func (h *WebSocketHandler) RegisterRoutes(app *fiber.App) {
+func (h *WebSocketHandler) RegisterRoutes(router fiber.Router) {
+	// Create WebSocket group
+	wsGroup := router.Group("/ws")
+
 	// Middleware to ensure it's a WebSocket upgrade request
-	app.Use("/ws/v1/listen", func(c *fiber.Ctx) error {
+	wsGroup.Use("/listen", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			c.Locals("allowed", true)
 			return c.Next()
@@ -52,7 +55,7 @@ func (h *WebSocketHandler) RegisterRoutes(app *fiber.App) {
 		return fiber.ErrUpgradeRequired
 	})
 
-	app.Get("/ws/v1/listen", websocket.New(h.handleWebSocketConnection))
+	wsGroup.Get("/listen", websocket.New(h.handleWebSocketConnection))
 }
 
 // WebSocketMessage represents messages sent/received via WebSocket
@@ -211,7 +214,7 @@ func (h *WebSocketHandler) handleSubscribe(
 			h.log.Warn("Security validation failed for WebSocket subscription",
 				zap.String("subscriberID", subscriberID),
 				zap.String("path", req.FullPath),
-				zap.String("userID", user.ID),
+				zap.String("userID", user.ID.Hex()),
 				zap.Error(err))
 			h.sendError(conn, "forbidden", "Access denied to this path")
 			return

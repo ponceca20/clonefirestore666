@@ -10,6 +10,7 @@ import (
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/shared/logger"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -110,30 +111,6 @@ func (m *MockFirestoreUsecase) ListIndexes(ctx context.Context, req usecase.List
 	args := m.Called(ctx, req)
 	return nil, args.Error(1)
 }
-func (m *MockFirestoreUsecase) CreateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
-	args := m.Called(ctx, path, data)
-	return nil, args.Error(1)
-}
-func (m *MockFirestoreUsecase) GetDocumentLegacy(ctx context.Context, path string) (map[string]interface{}, error) {
-	args := m.Called(ctx, path)
-	return nil, args.Error(1)
-}
-func (m *MockFirestoreUsecase) UpdateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
-	args := m.Called(ctx, path, data)
-	return nil, args.Error(1)
-}
-func (m *MockFirestoreUsecase) DeleteDocumentLegacy(ctx context.Context, path string) error {
-	args := m.Called(ctx, path)
-	return args.Error(0)
-}
-func (m *MockFirestoreUsecase) ListDocumentsLegacy(ctx context.Context, path string, limit int, pageToken string) ([]*model.Document, string, error) {
-	args := m.Called(ctx, path, limit, pageToken)
-	return nil, "", args.Error(2)
-}
-func (m *MockFirestoreUsecase) RunQueryLegacy(ctx context.Context, projectID string, queryJSON string) ([]*model.Document, error) {
-	args := m.Called(ctx, projectID, queryJSON)
-	return nil, args.Error(1)
-}
 
 func newTestDocument() *model.Document {
 	return &model.Document{
@@ -149,10 +126,14 @@ func newTestDocument() *model.Document {
 	}
 }
 
+func newTestLogger() logger.Logger {
+	return logger.NewLogger()
+}
+
 func TestCreateDocument_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID", h.CreateDocument)
 
 	mockUC.On("CreateDocument", mock.Anything, mock.Anything).Return(newTestDocument(), nil)
@@ -165,7 +146,7 @@ func TestCreateDocument_Success(t *testing.T) {
 
 func TestCreateDocument_BadRequest(t *testing.T) {
 	app := fiber.New()
-	h := &HTTPHandler{FirestoreUC: nil}
+	h := &HTTPHandler{FirestoreUC: nil, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID", h.CreateDocument)
 
 	req := httptest.NewRequest("POST", "/api/v1/firestore/projects/p1/databases/d1/documents/c1", strings.NewReader(`invalid-json`))
@@ -177,7 +158,7 @@ func TestCreateDocument_BadRequest(t *testing.T) {
 func TestCreateDocument_InternalError(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID", h.CreateDocument)
 
 	mockUC.On("CreateDocument", mock.Anything, mock.Anything).Return(nil, errors.New("db error"))
@@ -191,7 +172,7 @@ func TestCreateDocument_InternalError(t *testing.T) {
 func TestGetDocument_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Get("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.GetDocument)
 
 	mockUC.On("GetDocument", mock.Anything, mock.Anything).Return(newTestDocument(), nil)
@@ -204,10 +185,11 @@ func TestGetDocument_Success(t *testing.T) {
 func TestGetDocument_NotFound(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Get("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.GetDocument)
 
-	mockUC.On("GetDocument", mock.Anything, mock.Anything).Return(nil, errors.New("not found"))
+	// Cambia el mensaje de error a 'document not found' para que el handler devuelva 404
+	mockUC.On("GetDocument", mock.Anything, mock.Anything).Return(nil, errors.New("document not found"))
 
 	req := httptest.NewRequest("GET", "/api/v1/firestore/projects/p1/databases/d1/documents/c1/doc1", nil)
 	resp, _ := app.Test(req)
@@ -217,7 +199,7 @@ func TestGetDocument_NotFound(t *testing.T) {
 func TestUpdateDocument_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Put("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.UpdateDocument)
 
 	updatedDoc := newTestDocument()
@@ -232,7 +214,7 @@ func TestUpdateDocument_Success(t *testing.T) {
 
 func TestUpdateDocument_BadRequest(t *testing.T) {
 	app := fiber.New()
-	h := &HTTPHandler{FirestoreUC: nil}
+	h := &HTTPHandler{FirestoreUC: nil, Log: newTestLogger()}
 	app.Put("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.UpdateDocument)
 
 	req := httptest.NewRequest("PUT", "/api/v1/firestore/projects/p1/databases/d1/documents/c1/doc1", strings.NewReader(`invalid-json`))
@@ -244,7 +226,7 @@ func TestUpdateDocument_BadRequest(t *testing.T) {
 func TestUpdateDocument_InternalError(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Put("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.UpdateDocument)
 
 	mockUC.On("UpdateDocument", mock.Anything, mock.Anything).Return(nil, errors.New("update error"))
@@ -258,7 +240,7 @@ func TestUpdateDocument_InternalError(t *testing.T) {
 func TestDeleteDocument_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Delete("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.DeleteDocument)
 
 	mockUC.On("DeleteDocument", mock.Anything, mock.Anything).Return(nil)
@@ -271,7 +253,7 @@ func TestDeleteDocument_Success(t *testing.T) {
 func TestDeleteDocument_InternalError(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Delete("/api/v1/firestore/projects/:projectID/databases/:databaseID/documents/:collectionID/:documentID", h.DeleteDocument)
 
 	mockUC.On("DeleteDocument", mock.Anything, mock.Anything).Return(errors.New("delete error"))
@@ -284,7 +266,7 @@ func TestDeleteDocument_InternalError(t *testing.T) {
 func TestQueryDocuments_Success(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	mockUC.On("RunQuery", mock.Anything, mock.Anything).Return([]*model.Document{newTestDocument()}, nil)
@@ -297,7 +279,7 @@ func TestQueryDocuments_Success(t *testing.T) {
 
 func TestQueryDocuments_BadRequest(t *testing.T) {
 	app := fiber.New()
-	h := &HTTPHandler{FirestoreUC: nil}
+	h := &HTTPHandler{FirestoreUC: nil, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	req := httptest.NewRequest("POST", "/api/v1/firestore/projects/p1/databases/d1/query/c1", strings.NewReader(`invalid-json`))
@@ -309,7 +291,7 @@ func TestQueryDocuments_BadRequest(t *testing.T) {
 func TestQueryDocuments_InternalError(t *testing.T) {
 	app := fiber.New()
 	mockUC := new(MockFirestoreUsecase)
-	h := &HTTPHandler{FirestoreUC: mockUC}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: newTestLogger()}
 	app.Post("/api/v1/firestore/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	mockUC.On("RunQuery", mock.Anything, mock.Anything).Return(nil, errors.New("query error"))

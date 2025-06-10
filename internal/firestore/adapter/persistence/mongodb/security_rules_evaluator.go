@@ -14,6 +14,28 @@ import (
 
 // EvaluateAccess checks if a user can perform an operation on a resource
 func (e *SecurityRulesEngine) EvaluateAccess(ctx context.Context, operation repository.OperationType, securityContext *repository.SecurityContext) (*repository.RuleEvaluationResult, error) {
+	// Validate input parameters
+	if ctx == nil {
+		return &repository.RuleEvaluationResult{
+			Allowed: false,
+			Reason:  "Invalid context - nil context provided",
+		}, fmt.Errorf("context cannot be nil")
+	}
+
+	if securityContext == nil {
+		return &repository.RuleEvaluationResult{
+			Allowed: false,
+			Reason:  "Invalid security context - nil security context provided",
+		}, fmt.Errorf("security context cannot be nil")
+	}
+
+	if securityContext.ProjectID == "" || securityContext.DatabaseID == "" {
+		return &repository.RuleEvaluationResult{
+			Allowed: false,
+			Reason:  "Invalid security context - missing project ID or database ID",
+		}, fmt.Errorf("project ID and database ID are required")
+	}
+
 	// Load rules for this project/database
 	cacheKey := fmt.Sprintf("%s:%s", securityContext.ProjectID, securityContext.DatabaseID)
 	rules, err := e.getCachedRules(ctx, cacheKey, securityContext.ProjectID, securityContext.DatabaseID)

@@ -8,11 +8,15 @@ import (
 )
 
 // Project represents a Firestore project in the hierarchy
-// projects/{PROJECT_ID}/databases/{DATABASE_ID}/documents/...
+// Organization → Project → Database → Documents
+// Following Firestore's exact hierarchy: organizations/{ORG_ID}/projects/{PROJECT_ID}/databases/{DATABASE_ID}/documents/...
 type Project struct {
 	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
 	ProjectID   string             `json:"projectId" bson:"project_id"`
 	DisplayName string             `json:"displayName" bson:"display_name"`
+
+	// Organization relationship (NEW - Following Firestore hierarchy)
+	OrganizationID string `json:"organizationId" bson:"organization_id"`
 
 	// Project configuration
 	LocationID   string            `json:"locationId" bson:"location_id"`
@@ -89,8 +93,17 @@ func ValidateProjectID(projectID string) error {
 }
 
 // GetResourceName returns the full resource name for this project
+// Following Firestore hierarchy: organizations/{ORG_ID}/projects/{PROJECT_ID}
 func (p *Project) GetResourceName() string {
-	return "projects/" + p.ProjectID
+	if p.OrganizationID != "" {
+		return "organizations/" + p.OrganizationID + "/projects/" + p.ProjectID
+	}
+	return "projects/" + p.ProjectID // Fallback for backward compatibility
+}
+
+// GetFullHierarchyPath returns the full path including organization
+func (p *Project) GetFullHierarchyPath() string {
+	return "organizations/" + p.OrganizationID + "/projects/" + p.ProjectID
 }
 
 // IsActive returns true if the project is in active state

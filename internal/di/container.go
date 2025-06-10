@@ -75,14 +75,15 @@ func (c *Container) InitializeFirestore() error {
 	if c.Logger == nil {
 		c.Logger = logger.NewLogger()
 	}
-
 	// Create integrated auth client using the auth module
 	authUsecase := c.AuthModule.GetUsecase()
 	tokenSvc := c.AuthModule.GetTokenService()
 	authClient := authClientAdapter.NewAuthClientAdapter(authUsecase, tokenSvc)
-
 	// Initialize Firestore module with auth integration
-	firestoreModule, err := firestore.NewFirestoreModule(authClient, c.Logger, c.MongoDB)
+	// NewFirestoreModule expects: authClient, logger, mongoClient, masterDB
+	mongoClient := c.MongoDB.Client()
+	masterDB := c.MongoDB // Use the same database as master for simplicity
+	firestoreModule, err := firestore.NewFirestoreModule(authClient, c.Logger, mongoClient, masterDB)
 	if err != nil {
 		return fmt.Errorf("failed to create Firestore module: %w", err)
 	}

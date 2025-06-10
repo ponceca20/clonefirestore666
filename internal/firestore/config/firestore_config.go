@@ -23,13 +23,20 @@ type RealtimeConfig struct {
 	// MaxMessageSize int64 `env:"MAX_MESSAGE_SIZE" envDefault:"1048576" mapstructure:"max_message_size" json:"max_message_size"`
 }
 
+// CORSConfig holds configuration for CORS middleware
+type CORSConfig struct {
+	AllowOrigins     string `env:"CORS_ALLOW_ORIGINS" envDefault:"http://localhost:3000,https://tudominio.com"`
+	AllowMethods     string `env:"CORS_ALLOW_METHODS" envDefault:"GET,POST,PUT,DELETE,PATCH,OPTIONS"`
+	AllowHeaders     string `env:"CORS_ALLOW_HEADERS" envDefault:"Origin,Content-Type,Accept,Authorization,X-Requested-With"`
+	AllowCredentials bool   `env:"CORS_ALLOW_CREDENTIALS" envDefault:"true"`
+}
+
 // FirestoreConfig holds all configuration for the Firestore module.
 type FirestoreConfig struct {
-	MongoDBURI          string `env:"MONGODB_URI"`
-	DefaultDatabaseName string `env:"MONGODB_DEFAULT_DATABASE" envDefault:"firestore_default"`
-	// DatabaseURL string `env:"DATABASE_URL" mapstructure:"database_url" json:"database_url"` // Example
-	// Port string `env:"PORT" envDefault:"8080" mapstructure:"port" json:"port"` // Example
-	Realtime RealtimeConfig `mapstructure:"realtime" json:"realtime"`
+	MongoDBURI          string         `env:"MONGODB_URI"`
+	DefaultDatabaseName string         `env:"MONGODB_DEFAULT_DATABASE" envDefault:"firestore_default"`
+	Realtime            RealtimeConfig `mapstructure:"realtime" json:"realtime"`
+	CORS                CORSConfig     `mapstructure:"cors" json:"cors"`
 	// Other configurations for persistence, security rules, etc.
 }
 
@@ -45,6 +52,11 @@ func LoadConfig() (*FirestoreConfig, error) {
 	// Load nested RealtimeConfig from environment variables
 	if err := env.Parse(&cfg.Realtime); err != nil {
 		return nil, errors.New("failed to load firestore realtime configuration from environment: " + err.Error())
+	}
+
+	// Load nested CORSConfig from environment variables
+	if err := env.Parse(&cfg.CORS); err != nil {
+		return nil, errors.New("failed to load firestore CORS configuration from environment: " + err.Error())
 	}
 
 	// Validate configuration
@@ -72,6 +84,12 @@ func DefaultFirestoreConfig() *FirestoreConfig {
 			ClientSendChannelBuffer: 10,              // Default buffer size
 			// HandshakeTimeout: time.Second * 5,
 			// MaxMessageSize: 1024 * 1024, // 1MB
+		},
+		CORS: CORSConfig{
+			AllowOrigins:     "http://localhost:3000,https://tudominio.com",
+			AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
+			AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Requested-With",
+			AllowCredentials: true,
 		},
 		// Initialize other defaults here
 	}

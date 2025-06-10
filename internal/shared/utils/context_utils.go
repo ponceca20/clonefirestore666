@@ -9,16 +9,18 @@ import (
 
 // Common context errors
 var (
-	ErrTenantIDNotFound    = errors.New("tenantID not found in context")
-	ErrTenantIDNotString   = errors.New("tenantID in context is not a string")
-	ErrUserIDNotFound      = errors.New("userID not found in context")
-	ErrUserIDNotString     = errors.New("userID in context is not a string")
-	ErrProjectIDNotFound   = errors.New("projectID not found in context")
-	ErrProjectIDNotString  = errors.New("projectID in context is not a string")
-	ErrDatabaseIDNotFound  = errors.New("databaseID not found in context")
-	ErrDatabaseIDNotString = errors.New("databaseID in context is not a string")
-	ErrRequestIDNotFound   = errors.New("requestID not found in context")
-	ErrRequestIDNotString  = errors.New("requestID in context is not a string")
+	ErrTenantIDNotFound        = errors.New("tenantID not found in context")
+	ErrTenantIDNotString       = errors.New("tenantID in context is not a string")
+	ErrUserIDNotFound          = errors.New("userID not found in context")
+	ErrUserIDNotString         = errors.New("userID in context is not a string")
+	ErrProjectIDNotFound       = errors.New("projectID not found in context")
+	ErrProjectIDNotString      = errors.New("projectID in context is not a string")
+	ErrDatabaseIDNotFound      = errors.New("databaseID not found in context")
+	ErrDatabaseIDNotString     = errors.New("databaseID in context is not a string")
+	ErrRequestIDNotFound       = errors.New("requestID not found in context")
+	ErrRequestIDNotString      = errors.New("requestID in context is not a string")
+	ErrOrganizationIDNotFound  = errors.New("organizationID not found in context")
+	ErrOrganizationIDNotString = errors.New("organizationID in context is not a string")
 )
 
 // GetTenantIDFromContext retrieves the tenant ID from the context.
@@ -35,6 +37,21 @@ func GetTenantIDFromContext(ctx context.Context) (string, error) {
 	}
 
 	return tenantID, nil
+}
+
+// GetOrganizationIDFromContext retrieves the organization ID from the context.
+func GetOrganizationIDFromContext(ctx context.Context) (string, error) {
+	orgIDVal := ctx.Value(contextkeys.OrganizationIDKey)
+	if orgIDVal == nil {
+		return "", ErrOrganizationIDNotFound
+	}
+
+	orgID, ok := orgIDVal.(string)
+	if !ok {
+		return "", ErrOrganizationIDNotString
+	}
+
+	return orgID, nil
 }
 
 // GetUserIDFromContext retrieves the user ID from the context.
@@ -119,6 +136,11 @@ func WithTenantID(ctx context.Context, tenantID string) context.Context {
 	return context.WithValue(ctx, contextkeys.TenantIDKey, tenantID)
 }
 
+// WithOrganizationID adds organization ID to context
+func WithOrganizationID(ctx context.Context, organizationID string) context.Context {
+	return context.WithValue(ctx, contextkeys.OrganizationIDKey, organizationID)
+}
+
 // WithUserID adds user ID to context
 func WithUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, contextkeys.UserIDKey, userID)
@@ -164,6 +186,14 @@ func GetTenantIDOrDefault(ctx context.Context, defaultValue string) string {
 	return defaultValue
 }
 
+// GetOrganizationIDOrDefault retrieves the organization ID from context or returns a default value
+func GetOrganizationIDOrDefault(ctx context.Context, defaultValue string) string {
+	if organizationID, err := GetOrganizationIDFromContext(ctx); err == nil {
+		return organizationID
+	}
+	return defaultValue
+}
+
 // GetUserIDOrDefault retrieves the user ID from context or returns a default value
 func GetUserIDOrDefault(ctx context.Context, defaultValue string) string {
 	if userID, err := GetUserIDFromContext(ctx); err == nil {
@@ -191,6 +221,12 @@ func GetDatabaseIDOrDefault(ctx context.Context, defaultValue string) string {
 // HasTenantID checks if context has a tenant ID
 func HasTenantID(ctx context.Context) bool {
 	_, err := GetTenantIDFromContext(ctx)
+	return err == nil
+}
+
+// HasOrganizationID checks if context has an organization ID
+func HasOrganizationID(ctx context.Context) bool {
+	_, err := GetOrganizationIDFromContext(ctx)
 	return err == nil
 }
 

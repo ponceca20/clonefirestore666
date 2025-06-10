@@ -5,6 +5,7 @@ import (
 
 	"firestore-clone/internal/auth/domain/model"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -20,15 +21,19 @@ func NewUserFixture() *UserFixture {
 func (f *UserFixture) ValidUser() *model.User {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	return &model.User{
-		ID:           "test-user-id-123",
-		Email:        "test@example.com",
-		ProjectID:    "test-project-123",
-		DatabaseID:   "test-database",
-		PasswordHash: string(hashedPassword),
-		FirstName:    "Test",
-		LastName:     "User",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:          primitive.NewObjectID(),
+		UserID:      "test-user-id-123",
+		Email:       "test@example.com",
+		Password:    string(hashedPassword),
+		FirstName:   "Test",
+		LastName:    "User",
+		TenantID:    "test-tenant-123",
+		Roles:       []string{"user"},
+		Permissions: []string{"read"},
+		IsActive:    true,
+		IsVerified:  true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 }
 
@@ -36,15 +41,19 @@ func (f *UserFixture) ValidUser() *model.User {
 func (f *UserFixture) UserWithEmail(email string) *model.User {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	return &model.User{
-		ID:           "user-" + email,
-		Email:        email,
-		ProjectID:    "test-project-123",
-		DatabaseID:   "test-database",
-		PasswordHash: string(hashedPassword),
-		FirstName:    "Test",
-		LastName:     "User",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:          primitive.NewObjectID(),
+		UserID:      "user-" + email,
+		Email:       email,
+		Password:    string(hashedPassword),
+		FirstName:   "Test",
+		LastName:    "User",
+		TenantID:    "test-tenant-123",
+		Roles:       []string{"user"},
+		Permissions: []string{"read"},
+		IsActive:    true,
+		IsVerified:  true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 }
 
@@ -52,15 +61,19 @@ func (f *UserFixture) UserWithEmail(email string) *model.User {
 func (f *UserFixture) UserWithPassword(email, password string) *model.User {
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	return &model.User{
-		ID:           "user-" + email,
-		Email:        email,
-		ProjectID:    "test-project-123",
-		DatabaseID:   "test-database",
-		PasswordHash: string(hashedPassword),
-		FirstName:    "Test",
-		LastName:     "User",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		ID:          primitive.NewObjectID(),
+		UserID:      "user-" + email,
+		Email:       email,
+		Password:    string(hashedPassword),
+		FirstName:   "Test",
+		LastName:    "User",
+		TenantID:    "test-tenant-123",
+		Roles:       []string{"user"},
+		Permissions: []string{"read"},
+		IsActive:    true,
+		IsVerified:  true,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 }
 

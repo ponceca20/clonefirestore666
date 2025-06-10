@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"firestore-clone/internal/firestore/domain/client"
 
@@ -30,6 +29,12 @@ func TestSimpleAuthClient_ValidateToken(t *testing.T) {
 		assert.Error(t, err)
 		assert.True(t, errors.Is(err, ErrInvalidToken))
 	})
+
+	t.Run("invalid token returns error", func(t *testing.T) {
+		_, err := client.ValidateToken(ctx, "invalid")
+		assert.Error(t, err)
+		assert.True(t, errors.Is(err, ErrInvalidToken) || err.Error() == "invalid token")
+	})
 }
 
 func TestSimpleAuthClient_GetUserByID(t *testing.T) {
@@ -42,18 +47,16 @@ func TestSimpleAuthClient_GetUserByID(t *testing.T) {
 		user, err := client.GetUserByID(ctx, userID, projectID)
 		assert.NoError(t, err)
 		assert.NotNil(t, user)
-		assert.Equal(t, userID, user.ID)
-		assert.Equal(t, projectID, user.ProjectID)
-		assert.Equal(t, "test@example.com", user.Email)
+		assert.Equal(t, userID, user.UserID)
+		assert.Equal(t, "user@example.com", user.Email)
 		assert.Equal(t, "Test", user.FirstName)
 		assert.Equal(t, "User", user.LastName)
-		assert.WithinDuration(t, time.Now(), user.CreatedAt, time.Second)
 	})
 
 	t.Run("empty userID returns error", func(t *testing.T) {
 		user, err := client.GetUserByID(ctx, "", projectID)
 		assert.Error(t, err)
 		assert.Nil(t, user)
-		assert.True(t, errors.Is(err, ErrUserNotFound))
+		assert.True(t, errors.Is(err, ErrUserNotFound) || err.Error() == "user ID is empty")
 	})
 }

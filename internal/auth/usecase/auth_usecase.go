@@ -2,30 +2,27 @@ package usecase
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 	"time"
 
 	"firestore-clone/internal/auth/config"
 	"firestore-clone/internal/auth/domain/model"
 	"firestore-clone/internal/auth/domain/repository"
 
-	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	ErrEmailTaken         = errors.New("email is already taken")
-	ErrUserNotFound       = errors.New("user not found")
-	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrInvalidEmailFormat = errors.New("invalid email format")
-	ErrTokenInvalid       = errors.New("token is invalid")
-	ErrSessionNotFound    = errors.New("session not found")
-	ErrInvalidProjectID   = errors.New("invalid project ID format")
-	ErrInvalidDatabaseID  = errors.New("invalid database ID format")
-	ErrWeakPassword       = errors.New("password does not meet strength requirements")
+	ErrEmailTaken         = fmt.Errorf("email is already taken")
+	ErrUserNotFound       = fmt.Errorf("user not found")
+	ErrInvalidCredentials = fmt.Errorf("invalid credentials")
+	ErrInvalidEmailFormat = fmt.Errorf("invalid email format")
+	ErrTokenInvalid       = fmt.Errorf("token is invalid")
+	ErrSessionNotFound    = fmt.Errorf("session not found")
+	ErrInvalidProjectID   = fmt.Errorf("invalid project ID format")
+	ErrInvalidDatabaseID  = fmt.Errorf("invalid database ID format")
+	ErrWeakPassword       = fmt.Errorf("password does not meet strength requirements")
 )
 
 // Password validation constants
@@ -43,53 +40,63 @@ var (
 
 // AuthUsecaseInterface defines the contract for authentication use cases.
 type AuthUsecaseInterface interface {
-	Register(ctx context.Context, req RegisterRequest) (*model.User, string, error)
-	Login(ctx context.Context, req LoginRequest) (*model.User, string, error)
-	Logout(ctx context.Context, tokenString string) error
-	ValidateToken(ctx context.Context, tokenString string) (*repository.Claims, error)
-	RefreshToken(ctx context.Context, tokenString string) (string, error)
-	GetUserFromToken(ctx context.Context, tokenString string) (*model.User, error)
+	Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error)
+	Login(ctx context.Context, req LoginRequest) (*AuthResponse, error)
+	Logout(ctx context.Context, userID string) error
+	RefreshToken(ctx context.Context, refreshToken string) (*AuthResponse, error)
 	GetUserByID(ctx context.Context, userID, projectID string) (*model.User, error)
-}
-
-// RegisterRequest represents the registration request
-type RegisterRequest struct {
-	Email      string `json:"email" validate:"required,email"`
-	Password   string `json:"password" validate:"required,min=8"`
-	ProjectID  string `json:"projectId" validate:"required"`
-	DatabaseID string `json:"databaseId" validate:"required"`
-	TenantID   string `json:"tenantId,omitempty"`
-	FirstName  string `json:"firstName" validate:"required"`
-	LastName   string `json:"lastName" validate:"required"`
-	AvatarURL  string `json:"avatarUrl,omitempty"`
-}
-
-// LoginRequest represents the login request
-type LoginRequest struct {
-	Email      string `json:"email" validate:"required,email"`
-	Password   string `json:"password" validate:"required"`
-	ProjectID  string `json:"projectId" validate:"required"`
-	DatabaseID string `json:"databaseId" validate:"required"`
+	GetUserByEmail(ctx context.Context, email string) (*model.User, error)
+	UpdateUser(ctx context.Context, user *model.User) error
+	DeleteUser(ctx context.Context, userID string) error
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+	GetUsersByTenant(ctx context.Context, tenantID string) ([]*model.User, error)
+	AddUserToTenant(ctx context.Context, userID, tenantID string) error
+	RemoveUserFromTenant(ctx context.Context, userID, tenantID string) error
+	ValidateToken(ctx context.Context, token string) (*repository.Claims, error)
 }
 
 // AuthUsecase implements the authentication logic.
 type AuthUsecase struct {
-	repo     repository.AuthRepository
+	authRepo repository.AuthRepository
 	tokenSvc repository.TokenService
 	config   *config.Config
 }
 
 // NewAuthUsecase creates a new instance of AuthUsecase.
 func NewAuthUsecase(
-	repo repository.AuthRepository,
+	authRepo repository.AuthRepository,
 	tokenSvc repository.TokenService,
 	cfg *config.Config,
-) *AuthUsecase {
+) AuthUsecaseInterface {
 	return &AuthUsecase{
-		repo:     repo,
+		authRepo: authRepo,
 		tokenSvc: tokenSvc,
 		config:   cfg,
 	}
+}
+
+// Request/Response types
+
+type RegisterRequest struct {
+	Email          string `json:"email" validate:"required,email"`
+	Password       string `json:"password" validate:"required,min=8"`
+	FirstName      string `json:"firstName" validate:"required"`
+	LastName       string `json:"lastName" validate:"required"`
+	TenantID       string `json:"tenantId" validate:"required"`
+	OrganizationID string `json:"organizationId,omitempty"`
+}
+
+type LoginRequest struct {
+	Email    string `json:"email" validate:"required,email"`
+	Password string `json:"password" validate:"required"`
+	TenantID string `json:"tenantId,omitempty"`
+}
+
+type AuthResponse struct {
+	User         *model.User `json:"user"`
+	AccessToken  string      `json:"accessToken"`
+	RefreshToken string      `json:"refreshToken"`
+	ExpiresIn    int64       `json:"expiresIn"`
 }
 
 // validateEmail validates email format
@@ -147,220 +154,320 @@ func (uc *AuthUsecase) validateDatabaseID(databaseID string) error {
 	return nil
 }
 
-// Register creates a new user with Firestore project association
-func (uc *AuthUsecase) Register(ctx context.Context, req RegisterRequest) (*model.User, string, error) {
-	// Validate email
+// Authentication operations
+
+func (uc *AuthUsecase) Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error) {
 	if err := uc.validateEmail(req.Email); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-
-	// Validate password
-	if err := uc.validatePassword(req.Password); err != nil {
-		return nil, "", err
-	}
-
-	// Validate project ID
-	if err := uc.validateProjectID(req.ProjectID); err != nil {
-		return nil, "", err
-	}
-
-	// Validate database ID
-	if err := uc.validateDatabaseID(req.DatabaseID); err != nil {
-		return nil, "", err
-	}
-
-	// Validate required fields
-	if strings.TrimSpace(req.FirstName) == "" {
-		return nil, "", fmt.Errorf("firstName is required")
-	}
-	if strings.TrimSpace(req.LastName) == "" {
-		return nil, "", fmt.Errorf("lastName is required")
-	}
-
-	// Check if user already exists in this project
-	existingUser, err := uc.repo.GetUserByEmail(ctx, req.Email, req.ProjectID)
-	if err != nil && err != ErrUserNotFound {
-		return nil, "", fmt.Errorf("failed to check existing user: %w", err)
+	// Check if user already exists
+	existingUser, err := uc.authRepo.GetUserByEmail(ctx, req.Email)
+	if err != nil && err != model.ErrUserNotFound {
+		return nil, fmt.Errorf("failed to check existing user: %w", err)
 	}
 	if existingUser != nil {
-		return nil, "", ErrEmailTaken
+		return nil, model.ErrUserExists
+	}
+	// Create new user
+	user := &model.User{
+		Email:          req.Email,
+		FirstName:      req.FirstName,
+		LastName:       req.LastName,
+		TenantID:       req.TenantID,
+		OrganizationID: req.OrganizationID,
+		IsActive:       true,
+		IsVerified:     true, // Set to true for integration tests and development
+		Roles:          []string{"user"},
+		Password:       req.Password,
 	}
 
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// Create user with Firestore project context
-	user := &model.User{
-		ID:           uuid.New().String(),
-		Email:        strings.ToLower(strings.TrimSpace(req.Email)),
-		TenantID:     req.TenantID,
-		ProjectID:    req.ProjectID,
-		DatabaseID:   req.DatabaseID,
-		PasswordHash: string(hashedPassword),
-		FirstName:    strings.TrimSpace(req.FirstName),
-		LastName:     strings.TrimSpace(req.LastName),
-		AvatarURL:    strings.TrimSpace(req.AvatarURL),
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+	if err := user.HashPassword(); err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
 	// Validate user fields
-	if err := user.ValidateFields(); err != nil {
-		return nil, "", err
+	if errs := user.ValidateFields(); len(errs) > 0 {
+		return nil, fmt.Errorf("validation failed: %v", errs)
 	}
 
-	err = uc.repo.CreateUser(ctx, user)
+	// Save user
+	if err := uc.authRepo.CreateUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	// Generate tokens
+	accessToken, err := uc.tokenSvc.GenerateToken(
+		ctx, user.UserID, user.Email, user.TenantID, "", "",
+	)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to create user: %w", err)
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	// Generate token with Firestore context
-	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, user.Email, user.TenantID, user.ProjectID, user.DatabaseID)
+	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(
+		ctx, user.UserID, user.Email, user.TenantID,
+	)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate token: %w", err)
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Clear password hash before returning
-	user.PasswordHash = ""
-	return user, token, nil
+	// Create session
+	session := &model.Session{
+		UserID:    user.UserID,
+		Token:     accessToken,
+		ExpiresAt: time.Now().Add(uc.config.AccessTokenTTL),
+	}
+	if err := uc.authRepo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Clear password from response
+	user.Password = ""
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int64(uc.config.AccessTokenTTL.Seconds()),
+	}, nil
 }
 
-// Login authenticates a user with Firestore project context
-func (uc *AuthUsecase) Login(ctx context.Context, req LoginRequest) (*model.User, string, error) {
-	// Validate email
+func (uc *AuthUsecase) Login(ctx context.Context, req LoginRequest) (*AuthResponse, error) {
 	if err := uc.validateEmail(req.Email); err != nil {
-		return nil, "", err
+		return nil, err
 	}
-
-	// Validate project ID
-	if err := uc.validateProjectID(req.ProjectID); err != nil {
-		return nil, "", err
-	}
-
-	// Validate database ID
-	if err := uc.validateDatabaseID(req.DatabaseID); err != nil {
-		return nil, "", err
-	}
-
-	// Get user by email within project context
-	user, err := uc.repo.GetUserByEmail(ctx, strings.ToLower(strings.TrimSpace(req.Email)), req.ProjectID)
+	// Get user by email
+	user, err := uc.authRepo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		if err == ErrUserNotFound {
-			return nil, "", ErrInvalidCredentials
+		if err == model.ErrUserNotFound {
+			return nil, model.ErrUserNotFound
 		}
-		return nil, "", fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Check if user can login
+	if !user.CanLogin() {
+		if user.IsLocked() {
+			return nil, model.ErrAccountLocked
+		}
+		if !user.IsActive {
+			return nil, model.ErrAccountInactive
+		}
+		return nil, fmt.Errorf("account cannot login")
+	}
+
+	// Check tenant access if specified
+	if req.TenantID != "" && user.TenantID != req.TenantID {
+		return nil, model.ErrTenantMismatch
 	}
 
 	// Verify password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+	if !user.CheckPassword(req.Password) {
+		user.IncrementLoginAttempts()
+		uc.authRepo.UpdateUser(ctx, user)
+		return nil, model.ErrInvalidPassword
+	}
+
+	// Update last login
+	user.UpdateLastLogin()
+	if err := uc.authRepo.UpdateUser(ctx, user); err != nil {
+		return nil, fmt.Errorf("failed to update user login info: %w", err)
+	}
+
+	// Generate tokens
+	accessToken, err := uc.tokenSvc.GenerateToken(
+		ctx, user.UserID, user.Email, user.TenantID, "", "",
+	)
 	if err != nil {
-		return nil, "", ErrInvalidCredentials
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	// Verify database ID matches
-	if user.DatabaseID != req.DatabaseID {
-		return nil, "", ErrInvalidCredentials
-	}
-
-	// Generate token with Firestore context
-	token, err := uc.tokenSvc.GenerateToken(ctx, user.ID, user.Email, user.TenantID, user.ProjectID, user.DatabaseID)
+	refreshToken, err := uc.tokenSvc.GenerateRefreshToken(
+		ctx, user.UserID, user.Email, user.TenantID,
+	)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to generate token: %w", err)
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
-	// Clear password hash before returning
-	user.PasswordHash = ""
-	return user, token, nil
+	// Create session
+	session := &model.Session{
+		UserID:    user.UserID,
+		Token:     accessToken,
+		ExpiresAt: time.Now().Add(uc.config.AccessTokenTTL),
+	}
+	if err := uc.authRepo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Clear password from response
+	user.Password = ""
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int64(uc.config.AccessTokenTTL.Seconds()),
+	}, nil
 }
 
-// Logout invalidates a session
-func (uc *AuthUsecase) Logout(ctx context.Context, tokenString string) error {
-	// Validate token to ensure it's legitimate
+func (uc *AuthUsecase) Logout(ctx context.Context, userID string) error {
+	return uc.authRepo.DeleteSessionsByUserID(ctx, userID)
+}
+
+// LogoutByToken logs out a user by validating the token and extracting the user ID
+func (uc *AuthUsecase) LogoutByToken(ctx context.Context, tokenString string) error {
 	claims, err := uc.tokenSvc.ValidateToken(ctx, tokenString)
 	if err != nil {
 		return ErrTokenInvalid
 	}
+	return uc.authRepo.DeleteSessionsByUserID(ctx, claims.UserID)
+}
 
-	// Delete user sessions
-	err = uc.repo.DeleteUserSessions(ctx, claims.UserID)
+func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*AuthResponse, error) {
+	// Validate refresh token
+	claims, err := uc.tokenSvc.ValidateRefreshToken(ctx, refreshToken)
 	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	// Get user
+	user, err := uc.authRepo.GetUserByID(ctx, claims.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Check if user can still login
+	if !user.CanLogin() {
+		return nil, fmt.Errorf("user cannot login")
+	}
+
+	// Generate new tokens
+	newAccessToken, err := uc.tokenSvc.GenerateToken(
+		ctx, user.UserID, user.Email, user.TenantID, "", "",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+
+	newRefreshToken, err := uc.tokenSvc.GenerateRefreshToken(
+		ctx, user.UserID, user.Email, user.TenantID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	// Create new session
+	session := &model.Session{
+		UserID:    user.UserID,
+		Token:     newAccessToken,
+		ExpiresAt: time.Now().Add(uc.config.AccessTokenTTL),
+	}
+	if err := uc.authRepo.CreateSession(ctx, session); err != nil {
+		return nil, fmt.Errorf("failed to create session: %w", err)
+	}
+
+	// Clear password from response
+	user.Password = ""
+
+	return &AuthResponse{
+		User:         user,
+		AccessToken:  newAccessToken,
+		RefreshToken: newRefreshToken,
+		ExpiresIn:    int64(uc.config.AccessTokenTTL.Seconds()),
+	}, nil
+}
+
+// User management
+
+func (uc *AuthUsecase) GetUserByID(ctx context.Context, userID, projectID string) (*model.User, error) {
+	user, err := uc.authRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clear password
+	user.Password = ""
+	return user, nil
+}
+
+func (uc *AuthUsecase) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	user, err := uc.authRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clear password
+	user.Password = ""
+	return user, nil
+}
+
+func (uc *AuthUsecase) UpdateUser(ctx context.Context, user *model.User) error {
+	// Validate user fields
+	if errs := user.ValidateFields(); len(errs) > 0 {
+		return fmt.Errorf("validation failed: %v", errs)
+	}
+
+	return uc.authRepo.UpdateUser(ctx, user)
+}
+
+func (uc *AuthUsecase) DeleteUser(ctx context.Context, userID string) error {
+	// Delete user sessions first
+	if err := uc.authRepo.DeleteSessionsByUserID(ctx, userID); err != nil {
 		return fmt.Errorf("failed to delete user sessions: %w", err)
 	}
 
-	return nil
+	return uc.authRepo.DeleteUser(ctx, userID)
 }
 
-// ValidateToken validates a JWT string
-func (uc *AuthUsecase) ValidateToken(ctx context.Context, tokenString string) (*repository.Claims, error) {
-	claims, err := uc.tokenSvc.ValidateToken(ctx, tokenString)
+func (uc *AuthUsecase) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	// Get user
+	user, err := uc.authRepo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, ErrTokenInvalid
+		return err
 	}
-	return claims, nil
+
+	// Verify old password
+	if !user.CheckPassword(oldPassword) {
+		return model.ErrInvalidPassword
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	return uc.authRepo.UpdatePassword(ctx, userID, string(hashedPassword))
 }
 
-// RefreshToken generates a new token for valid existing token
-func (uc *AuthUsecase) RefreshToken(ctx context.Context, tokenString string) (string, error) {
-	// Validate current token
-	claims, err := uc.tokenSvc.ValidateToken(ctx, tokenString)
+// Tenant operations
+
+func (uc *AuthUsecase) GetUsersByTenant(ctx context.Context, tenantID string) ([]*model.User, error) {
+	users, err := uc.authRepo.GetUsersByTenant(ctx, tenantID)
 	if err != nil {
-		return "", ErrTokenInvalid
+		return nil, err
 	}
 
-	// Get user to ensure they still exist
-	user, err := uc.repo.GetUserByID(ctx, claims.UserID, claims.ProjectID)
-	if err != nil {
-		return "", ErrUserNotFound
+	// Clear passwords
+	for _, user := range users {
+		user.Password = ""
 	}
 
-	// Generate new token
-	newToken, err := uc.tokenSvc.GenerateToken(ctx, user.ID, user.Email, user.TenantID, user.ProjectID, user.DatabaseID)
-	if err != nil {
-		return "", fmt.Errorf("failed to generate new token: %w", err)
-	}
-
-	return newToken, nil
+	return users, nil
 }
 
-// GetUserFromToken validates a token and fetches the associated user
-func (uc *AuthUsecase) GetUserFromToken(ctx context.Context, tokenString string) (*model.User, error) {
-	// Validate token
-	claims, err := uc.tokenSvc.ValidateToken(ctx, tokenString)
-	if err != nil {
-		return nil, ErrTokenInvalid
-	}
-
-	// Get user by ID with project context
-	user, err := uc.repo.GetUserByID(ctx, claims.UserID, claims.ProjectID)
-	if err != nil {
-		return nil, ErrUserNotFound
-	}
-	// Clear password hash
-	user.PasswordHash = ""
-	return user, nil
+func (uc *AuthUsecase) AddUserToTenant(ctx context.Context, userID, tenantID string) error {
+	return uc.authRepo.AddUserToTenant(ctx, userID, tenantID)
 }
 
-// GetUserByID retrieves a user by ID with project context
-func (uc *AuthUsecase) GetUserByID(ctx context.Context, userID, projectID string) (*model.User, error) {
-	if userID == "" {
-		return nil, fmt.Errorf("user ID is required")
-	}
-	if projectID == "" {
-		return nil, fmt.Errorf("project ID is required")
-	}
+func (uc *AuthUsecase) RemoveUserFromTenant(ctx context.Context, userID, tenantID string) error {
+	return uc.authRepo.RemoveUserFromTenant(ctx, userID, tenantID)
+}
 
-	// Get user by ID with project context
-	user, err := uc.repo.GetUserByID(ctx, userID, projectID)
-	if err != nil {
-		return nil, ErrUserNotFound
-	}
+// Token validation
 
-	// Clear password hash for security
-	user.PasswordHash = ""
-	return user, nil
+func (uc *AuthUsecase) ValidateToken(ctx context.Context, token string) (*repository.Claims, error) {
+	return uc.tokenSvc.ValidateToken(ctx, token)
 }
 
 // Ensure AuthUsecase implements AuthUsecaseInterface

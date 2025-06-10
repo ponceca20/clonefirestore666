@@ -6,6 +6,8 @@ import (
 
 	"firestore-clone/internal/auth/domain/model"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -35,7 +37,7 @@ func TestSecurityRulesEngine_InterfaceCompliance(t *testing.T) {
 func TestSecurityRulesEngine_EvaluateAccess(t *testing.T) {
 	engine := &mockSecurityRulesEngine{}
 	ctx := context.Background()
-	user := &model.User{ID: "user1"}
+	user := &model.User{ID: primitive.NewObjectID(), TenantID: "tenant1"}
 	secCtx := &SecurityContext{User: user, ProjectID: "p1", DatabaseID: "d1", Path: "/test"}
 	result, err := engine.EvaluateAccess(ctx, OperationRead, secCtx)
 	assert.NoError(t, err)

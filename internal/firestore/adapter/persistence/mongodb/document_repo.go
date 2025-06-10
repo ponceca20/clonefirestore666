@@ -18,6 +18,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+// ErrDocumentNotFound is returned when a document is not found.
 var (
 	ErrDocumentNotFound   = errors.New("document not found")
 	ErrCollectionNotFound = errors.New("collection not found")
@@ -25,97 +26,14 @@ var (
 	ErrPreconditionFailed = errors.New("precondition failed")
 )
 
-// Adapter types to make mongo.Collection compatible with interfaces
-
-// mongoIndexCollection wraps mongo.Collection to implement IndexCollection interface
-type mongoIndexCollection struct {
-	collection *mongo.Collection
-}
-
-func (m *mongoIndexCollection) CountDocuments(ctx context.Context, filter interface{}) (int64, error) {
-	return m.collection.CountDocuments(ctx, filter)
-}
-
-func (m *mongoIndexCollection) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
-	result, err := m.collection.InsertOne(ctx, doc)
-	if err != nil {
-		return nil, err
-	}
-	return result.InsertedID, nil
-}
-
-func (m *mongoIndexCollection) DeleteOne(ctx context.Context, filter interface{}) (DeleteResult, error) {
-	result, err := m.collection.DeleteOne(ctx, filter)
-	if err != nil {
-		return DeleteResult{}, err
-	}
-	return DeleteResult{DeletedCount: result.DeletedCount}, nil
-}
-
-func (m *mongoIndexCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResult, error) {
-	_, err := m.collection.UpdateOne(ctx, filter, update)
-	return UpdateResult{}, err
-}
-
-func (m *mongoIndexCollection) Find(ctx context.Context, filter interface{}) (Cursor, error) {
-	return m.collection.Find(ctx, filter)
-}
-
-func (m *mongoIndexCollection) FindOne(ctx context.Context, filter interface{}) SingleResult {
-	return m.collection.FindOne(ctx, filter)
-}
-
-// mongoDocumentCollection wraps mongo.Collection to implement DocumentCollection interface
-type mongoDocumentCollection struct {
-	collection *mongo.Collection
-}
-
-func (m *mongoDocumentCollection) Indexes() IndexManager {
-	return &mongoIndexManager{indexView: m.collection.Indexes()}
-}
-
-func (m *mongoDocumentCollection) CountDocuments(ctx context.Context, filter interface{}) (int64, error) {
-	return m.collection.CountDocuments(ctx, filter)
-}
-
-// mongoIndexManager wraps mongo.IndexView to implement IndexManager interface
-type mongoIndexManager struct {
-	indexView mongo.IndexView
-}
-
-func (m *mongoIndexManager) CreateOne(ctx context.Context, model interface{}) (interface{}, error) {
-	if indexModel, ok := model.(mongo.IndexModel); ok {
-		return m.indexView.CreateOne(ctx, indexModel)
-	}
-	return nil, fmt.Errorf("invalid index model type")
-}
-
-func (m *mongoIndexManager) DropOne(ctx context.Context, name string) (interface{}, error) {
-	return m.indexView.DropOne(ctx, name)
-}
-
-func (m *mongoIndexManager) ListSpecifications(ctx context.Context) ([]IndexSpec, error) {
-	specs, err := m.indexView.ListSpecifications(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	var result []IndexSpec
-	for _, spec := range specs {
-		result = append(result, IndexSpec{Name: spec.Name})
-	}
-	return result, nil
-}
-
-// DocumentRepository implements the Firestore document repository using MongoDB
-// This is the main repository that coordinates different operation types
+// DocumentRepository implements the Firestore document repository using MongoDB.
 type DocumentRepository struct {
 	db             DatabaseProvider
 	eventBus       *eventbus.EventBus
 	logger         logger.Logger
-	documentsCol   *mongo.Collection
-	indexesCol     *mongo.Collection
-	collectionsCol *mongo.Collection
+	documentsCol   CollectionInterface
+	indexesCol     CollectionInterface
+	collectionsCol CollectionInterface
 
 	// Specialized operation handlers
 	documentOps   *DocumentOperations
@@ -126,21 +44,17 @@ type DocumentRepository struct {
 	indexOps      *IndexOperations
 }
 
-// DatabaseProvider abstracts the mongo.Database for testability
-// (puedes usar mockery o testify/mock manualmente)
-//
-//go:generate mockery --name=DatabaseProvider
+// DatabaseProvider abstracts the mongo.Database for testability.
 type DatabaseProvider interface {
 	Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection
-	Client() *mongo.Client // Agrega Client() para compatibilidad con transacciones
+	Client() *mongo.Client
 }
 
-// mongoDatabaseAdapter wraps *mongo.Database to implement DatabaseProvider
+// mongoDatabaseAdapter wraps *mongo.Database to implement DatabaseProvider.
 type mongoDatabaseAdapter struct {
 	db *mongo.Database
 }
 
-// NewMongoDatabaseAdapter creates a new adapter for real mongo.Database
 func NewMongoDatabaseAdapter(db *mongo.Database) DatabaseProvider {
 	return &mongoDatabaseAdapter{db: db}
 }
@@ -153,27 +67,31 @@ func (m *mongoDatabaseAdapter) Client() *mongo.Client {
 	return m.db.Client()
 }
 
-// NewDocumentRepository creates a new MongoDB-backed document repository
+// NewDocumentRepository creates a new MongoDB-backed document repository.
 func NewDocumentRepository(db DatabaseProvider, eventBus *eventbus.EventBus, logger logger.Logger) *DocumentRepository {
+	docsCol := NewMongoCollectionAdapter(db.Collection("documents"))
+	collsCol := NewMongoCollectionAdapter(db.Collection("collections"))
+	idxCol := NewMongoCollectionAdapter(db.Collection("indexes"))
+
 	repo := &DocumentRepository{
 		db:             db,
 		eventBus:       eventBus,
 		logger:         logger,
-		documentsCol:   db.Collection("documents"),
-		indexesCol:     db.Collection("indexes"),
-		collectionsCol: db.Collection("collections"),
-	} // Initialize specialized operation handlers
+		documentsCol:   docsCol,
+		collectionsCol: collsCol,
+		indexesCol:     idxCol,
+	}
 	repo.documentOps = NewDocumentOperations(repo)
 	repo.batchOps = NewBatchOperations(repo)
 	repo.collectionOps = NewCollectionOperations(repo)
-	repo.atomicOps = NewAtomicOperations(repo.documentsCol)
+	// Use bridge adapters for atomic and index ops
+	repo.atomicOps = NewAtomicOperations(NewCollectionUpdaterAdapter(repo.documentsCol))
 	repo.projectDbOps = NewProjectDatabaseOperations(repo)
 	repo.indexOps = NewIndexOperations(
-		&mongoIndexCollection{collection: repo.indexesCol},
-		&mongoDocumentCollection{collection: repo.documentsCol},
+		NewIndexCollectionAdapter(repo.indexesCol),
+		NewDocumentCollectionAdapter(repo.documentsCol),
 		repo.logger,
 	)
-
 	return repo
 }
 
@@ -237,6 +155,10 @@ func (r *DocumentRepository) ListDocuments(ctx context.Context, projectID, datab
 }
 
 // --- Collection Operations ---
+
+// Cambia los tipos de collectionsCol y documentsCol a CollectionInterface
+// Define la interfaz CollectionInterface en un archivo compartido si es necesario
+// type CollectionInterface interface { ... } // Ya definida en collection_adapter.go
 
 // CreateCollection creates a new collection
 func (r *DocumentRepository) CreateCollection(ctx context.Context, projectID, databaseID string, collection *model.Collection) error {

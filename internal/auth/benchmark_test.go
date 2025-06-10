@@ -5,6 +5,7 @@ import (
 
 	"firestore-clone/internal/auth/domain/model"
 
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -34,7 +35,7 @@ func BenchmarkPasswordCompare(b *testing.B) {
 
 func BenchmarkUserStructCopy(b *testing.B) {
 	user := &model.User{
-		ID:    "user-123",
+		ID:    primitive.NewObjectID(),
 		Email: "test@example.com",
 	}
 	for i := 0; i < b.N; i++ {

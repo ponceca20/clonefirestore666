@@ -1,10 +1,13 @@
 # Firestore Clone - Production Makefile
-# Task 5: Integration and Production Setup
+# Multi-Tenant Architecture Support
 
 # Variables
 BINARY_NAME=firestore-clone
-BINARY_PATH=./bin/$(BINARY_NAME)
-MAIN_PATH=./cmd/main.go
+BINARY_MULTITENANT=firestore-multitenant
+BINARY_LEGACY=firestore-legacy
+BINARY_PATH=./bin/
+MAIN_MULTITENANT_PATH=./cmd/main.go
+MAIN_LEGACY_PATH=./cmd/main_legacy.go
 DOCKER_IMAGE=firestore-clone
 DOCKER_TAG=latest
 
@@ -151,6 +154,41 @@ seed:
 release: clean test build-linux
 	@echo "Creating release build..."
 	tar -czf bin/$(BINARY_NAME)-linux-amd64.tar.gz -C bin $(BINARY_UNIX)
+
+# Quick start commands
+.PHONY: run run-legacy run-multitenant
+run: run-multitenant
+	@echo "Starting Multi-Tenant version (RECOMMENDED)"
+
+run-multitenant:
+	@echo "🚀 Starting Firestore Clone Multi-Tenant..."
+	@echo "📖 Architecture: Organization → Project → Database → Documents"
+	@echo "🌐 URL: http://localhost:8080"
+	$(GOCMD) run $(MAIN_MULTITENANT_PATH)
+
+run-legacy:
+	@echo "🔧 Starting Firestore Clone Legacy (Single-Tenant)..."
+	@echo "⚠️  Note: This is for backward compatibility only"
+	@echo "🌐 URL: http://localhost:3000"
+	$(GOCMD) run $(MAIN_LEGACY_PATH)
+
+# Build commands
+.PHONY: build build-multitenant build-legacy build-all
+build: build-multitenant
+	@echo "Built Multi-Tenant version (default)"
+
+build-multitenant:
+	@echo "Building Multi-Tenant version..."
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)$(BINARY_MULTITENANT) $(MAIN_MULTITENANT_PATH)
+
+build-legacy:
+	@echo "Building Legacy version..."
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_PATH)$(BINARY_LEGACY) $(MAIN_LEGACY_PATH)
+
+build-all: build-multitenant build-legacy
+	@echo "✅ Built both versions:"
+	@echo "   - Multi-Tenant: $(BINARY_PATH)$(BINARY_MULTITENANT)"
+	@echo "   - Legacy: $(BINARY_PATH)$(BINARY_LEGACY)"
 
 # Help command
 help:

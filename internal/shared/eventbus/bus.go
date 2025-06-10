@@ -20,6 +20,16 @@ type Event interface {
 // Handler defines the event handler function type
 type Handler func(ctx context.Context, event Event) error
 
+// EventBusInterface defines the contract for event bus implementations
+type EventBusInterface interface {
+	Subscribe(eventType string, handler Handler)
+	Publish(ctx context.Context, event Event) error
+	PublishAndForget(ctx context.Context, event Event)
+	Unsubscribe(eventType string)
+	GetSubscriberCount(eventType string) int
+	GetEventTypes() []string
+}
+
 // EventBus represents an in-memory event bus with enhanced capabilities
 type EventBus struct {
 	mu       sync.RWMutex

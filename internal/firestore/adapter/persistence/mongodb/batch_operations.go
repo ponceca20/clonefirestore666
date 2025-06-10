@@ -90,8 +90,8 @@ func (b *BatchOperations) executeBatchOperation(ctx context.Context, projectID, 
 		return nil, fmt.Errorf("invalid document path: %s", write.Path)
 	}
 
-	collectionID := pathParts[0]
-	documentID := pathParts[1]
+	collectionID := pathParts[len(pathParts)-2]
+	documentID := pathParts[len(pathParts)-1]
 
 	// Create the document filter
 	filter := bson.M{
@@ -106,19 +106,17 @@ func (b *BatchOperations) executeBatchOperation(ctx context.Context, projectID, 
 		return b.executeCreateOperation(ctx, filter, write, now)
 	case model.WriteTypeUpdate:
 		return b.executeUpdateOperation(ctx, filter, write, now)
-	case model.WriteTypeDelete:
-		return b.executeDeleteOperation(ctx, filter, write, now)
 	case model.WriteTypeSet:
 		return b.executeSetOperation(ctx, filter, write, now)
+	case model.WriteTypeDelete:
+		return b.executeDeleteOperation(ctx, filter, write, now)
 	default:
-		return nil, fmt.Errorf("unknown operation type: %s", write.Type)
+		return nil, fmt.Errorf("unsupported write operation type: %s", write.Type)
 	}
 }
 
 // executeCreateOperation handles create operations for WriteOperation
 func (b *BatchOperations) executeCreateOperation(ctx context.Context, filter bson.M, write *model.WriteOperation, now time.Time) (*model.WriteResult, error) {
-	result := &model.WriteResult{UpdateTime: now}
-
 	// Check if document already exists
 	count, err := b.repo.documentsCol.CountDocuments(ctx, filter)
 	if err != nil {
@@ -151,18 +149,16 @@ func (b *BatchOperations) executeCreateOperation(ctx context.Context, filter bso
 		return nil, fmt.Errorf("failed to create document: %w", err)
 	}
 
-	return result, nil
+	return &model.WriteResult{
+		UpdateTime: now,
+	}, nil
 }
 
 // executeUpdateOperation handles update operations for WriteOperation
 func (b *BatchOperations) executeUpdateOperation(ctx context.Context, filter bson.M, write *model.WriteOperation, now time.Time) (*model.WriteResult, error) {
-	result := &model.WriteResult{UpdateTime: now}
-
 	// Check preconditions if present
-	if write.Precondition != nil {
-		if !b.checkPrecondition(ctx, filter, write.Precondition) {
-			return nil, ErrPreconditionFailed
-		}
+	if write.Precondition != nil && !b.checkPrecondition(ctx, filter, write.Precondition) {
+		return nil, fmt.Errorf("precondition failed")
 	}
 
 	// Convert data to FieldValue format
@@ -179,99 +175,88 @@ func (b *BatchOperations) executeUpdateOperation(ctx context.Context, filter bso
 		},
 	}
 
-	updateResult, err := b.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	result, err := b.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update document: %w", err)
 	}
-
-	if updateResult.MatchedCount == 0 {
-		return nil, ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return nil, fmt.Errorf("document not found")
 	}
 
-	return result, nil
+	return &model.WriteResult{
+		UpdateTime: now,
+	}, nil
 }
 
 // executeSetOperation handles set operations (upsert)
 func (b *BatchOperations) executeSetOperation(ctx context.Context, filter bson.M, write *model.WriteOperation, now time.Time) (*model.WriteResult, error) {
-	result := &model.WriteResult{UpdateTime: now}
-
 	// Convert data to FieldValue format
 	fields := convertToFieldValues(write.Data)
 
 	// Prepare upsert document
 	doc := &model.Document{
+		ID:           primitive.NewObjectID(),
 		ProjectID:    filter["project_id"].(string),
 		DatabaseID:   filter["database_id"].(string),
 		CollectionID: filter["collection_id"].(string),
 		DocumentID:   filter["document_id"].(string),
 		Path:         write.Path,
 		Fields:       fields,
+		CreateTime:   now,
 		UpdateTime:   now,
 		Version:      1,
 		Exists:       true,
 	}
 
-	update := bson.M{
-		"$set": doc,
-		"$setOnInsert": bson.M{
-			"_id":         primitive.NewObjectID(),
-			"create_time": now,
-		},
-	}
-
-	opts := options.Update().SetUpsert(true)
-	_, err := b.repo.documentsCol.UpdateOne(ctx, filter, update, opts)
+	opts := options.Replace().SetUpsert(true)
+	_, err := b.repo.documentsCol.ReplaceOne(ctx, filter, doc, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set document: %w", err)
 	}
 
-	return result, nil
+	return &model.WriteResult{
+		UpdateTime: now,
+	}, nil
 }
 
 // executeDeleteOperation handles delete operations for WriteOperation
 func (b *BatchOperations) executeDeleteOperation(ctx context.Context, filter bson.M, write *model.WriteOperation, now time.Time) (*model.WriteResult, error) {
-	result := &model.WriteResult{UpdateTime: now}
-
 	// Check preconditions if present
-	if write.Precondition != nil {
-		if !b.checkPrecondition(ctx, filter, write.Precondition) {
-			return nil, ErrPreconditionFailed
-		}
+	if write.Precondition != nil && !b.checkPrecondition(ctx, filter, write.Precondition) {
+		return nil, fmt.Errorf("precondition failed")
 	}
 
-	deleteResult, err := b.repo.documentsCol.DeleteOne(ctx, filter)
+	result, err := b.repo.documentsCol.DeleteOne(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete document: %w", err)
 	}
 
-	if deleteResult.DeletedCount == 0 {
-		return nil, ErrDocumentNotFound
+	if result.Deleted() == 0 {
+		return nil, fmt.Errorf("document not found")
 	}
 
-	return result, nil
+	return &model.WriteResult{
+		UpdateTime: now,
+	}, nil
 }
 
 // checkPrecondition validates operation preconditions
 func (b *BatchOperations) checkPrecondition(ctx context.Context, filter bson.M, precondition *model.Precondition) bool {
+	var doc model.Document
+	err := b.repo.documentsCol.FindOne(ctx, filter).Decode(&doc)
+
 	if precondition.Exists != nil {
-		count, err := b.repo.documentsCol.CountDocuments(ctx, filter)
-		if err != nil {
-			return false
+		if *precondition.Exists && err == mongo.ErrNoDocuments {
+			return false // Document should exist but doesn't
 		}
-		exists := count > 0
-		if *precondition.Exists != exists {
-			return false
+		if !*precondition.Exists && err != mongo.ErrNoDocuments {
+			return false // Document shouldn't exist but does
 		}
 	}
 
-	if precondition.UpdateTime != nil {
-		var doc model.Document
-		err := b.repo.documentsCol.FindOne(ctx, filter).Decode(&doc)
-		if err != nil {
-			return false
-		}
+	if precondition.UpdateTime != nil && err == nil {
 		if !doc.UpdateTime.Equal(*precondition.UpdateTime) {
-			return false
+			return false // Update time doesn't match
 		}
 	}
 
@@ -308,7 +293,7 @@ func (b *BatchOperations) emitDocumentEvent(ctx context.Context, projectID, data
 
 		event := eventbus.NewBasicEventWithSource(eventType, eventData, "document_repository")
 		if err := b.repo.eventBus.Publish(ctx, event); err != nil {
-			b.repo.logger.Error("Failed to publish event: %v", err)
+			b.repo.logger.Error("Failed to emit document event: %v", err)
 		}
 	}
 }

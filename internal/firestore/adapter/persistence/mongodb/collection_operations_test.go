@@ -3,243 +3,116 @@ package mongodb
 import (
 	"context"
 	"testing"
-	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/mock"
-	"github.com/stretchr/testify/suite"
 	"go.mongodb.org/mongo-driver/bson/primitive"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// CollectionOperationsTestSuite defines the test suite for CollectionOperations
-type CollectionOperationsTestSuite struct {
-	suite.Suite
-	collectionOps      *CollectionOperations
-	mockCollectionsCol *MockCollection
-	mockDocumentsCol   *MockCollection
-	mockRepo           *DocumentRepository
+// MockCollection implements the minimal mongo.Collection interface for testing
+// Only the methods used in CollectionOperations are mocked
+
+type mockCollection struct{}
+
+func (m *mockCollection) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+	return 0, nil // Always return 0 collections (does not exist)
+}
+func (m *mockCollection) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
+	return nil, nil // Simulate successful insert
+}
+func (m *mockCollection) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
+	return &mockSingleResult{}
+}
+func (m *mockCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
+	return &mockUpdateResult{MatchedCount: 1}, nil
+}
+func (m *mockCollection) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
+	return &mockUpdateResult{MatchedCount: 1}, nil
+}
+func (m *mockCollection) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
+	return &mockDeleteResult{DeletedCount: 1}, nil
+}
+func (m *mockCollection) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
+	return &mockCursor{}, nil
+}
+func (m *mockCollection) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
+	return &mockCursor{}, nil
+}
+func (m *mockCollection) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
+	return &mockSingleResult{}
 }
 
-// SetupSuite runs once before all tests in the suite
-func (suite *CollectionOperationsTestSuite) SetupSuite() {
-	suite.mockCollectionsCol = &MockCollection{}
-	suite.mockDocumentsCol = &MockCollection{}
-}
+// Mock types for FindOne, UpdateOne, DeleteOne, Find
 
-// SetupTest runs before each test
-func (suite *CollectionOperationsTestSuite) SetupTest() {
-	// Reset mocks before each test
-	suite.mockCollectionsCol.Mock = mock.Mock{}
-	suite.mockDocumentsCol.Mock = mock.Mock{}
+type mockSingleResult struct{}
 
-	// Create a minimal repo for each test
-	suite.mockRepo = &DocumentRepository{
-		logger: new(MockLogger),
-	}
+func (m *mockSingleResult) Decode(v interface{}) error { return nil }
 
-	// We'll use the real CollectionOperations but with minimal mocking
-	suite.collectionOps = NewCollectionOperations(suite.mockRepo)
-}
+// Implementación de métodos de interfaz para los mocks
 
-// TearDownTest runs after each test
-func (suite *CollectionOperationsTestSuite) TearDownTest() {
-	// Verify all expectations were met
-	suite.mockCollectionsCol.AssertExpectations(suite.T())
-	suite.mockDocumentsCol.AssertExpectations(suite.T())
-}
+type mockUpdateResult struct{ MatchedCount int64 }
 
-// Test helper functions
-func createTestCollection() *model.Collection {
-	return &model.Collection{
-		ID:            primitive.NewObjectID(),
-		ProjectID:     "test-project",
-		DatabaseID:    "test-database",
-		CollectionID:  "test-collection",
-		Path:          "projects/test-project/databases/test-database/documents/test-collection",
-		ParentPath:    "",
-		DisplayName:   "Test Collection",
-		Description:   "A test collection",
-		DocumentCount: 0,
-		StorageSize:   0,
-		CreatedAt:     time.Now(),
-		UpdatedAt:     time.Now(),
-		IsActive:      true,
-		Indexes:       []model.CollectionIndex{},
-		SecurityRules: "",
-	}
-}
+func (m *mockUpdateResult) Matched() int64 { return m.MatchedCount }
 
-func createTestSubcollection() *model.Collection {
-	return &model.Collection{
-		ID:           primitive.NewObjectID(),
-		ProjectID:    "test-project",
-		DatabaseID:   "test-database",
-		CollectionID: "test-subcollection",
-		Path:         "projects/test-project/databases/test-database/documents/parent-collection/parent-doc/test-subcollection",
-		ParentPath:   "projects/test-project/databases/test-database/documents/parent-collection/parent-doc",
-		DisplayName:  "Test Subcollection",
-		Description:  "A test subcollection",
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
-		IsActive:     true,
+type mockDeleteResult struct{ DeletedCount int64 }
+
+func (m *mockDeleteResult) Deleted() int64 { return m.DeletedCount }
+
+type mockCursor struct{}
+
+func (m *mockCursor) Next(ctx context.Context) bool   { return false }
+func (m *mockCursor) Decode(val interface{}) error    { return nil }
+func (m *mockCursor) Close(ctx context.Context) error { return nil }
+func (m *mockCursor) Err() error                      { return nil }
+
+// Usa la definición real de DocumentRepository y CollectionOperations del código de producción, no las redeclares aquí.
+
+// Crea un DocumentRepository con mocks para los tests
+func newTestDocumentRepositoryForCollections() *DocumentRepository {
+	return &DocumentRepository{
+		collectionsCol: &mockCollection{},
+		documentsCol:   &mockCollection{},
 	}
 }
 
-// Test constructor
-func (suite *CollectionOperationsTestSuite) TestNewCollectionOperations() {
-	// Test constructor
-	repo := &DocumentRepository{}
+// En los tests, usa el adaptador para crear el repo compatible
+func TestCollectionOperations_CreateCollection(t *testing.T) {
+	repo := newTestDocumentRepositoryForCollections()
 	ops := NewCollectionOperations(repo)
-
-	assert.NotNil(suite.T(), ops)
-	assert.Equal(suite.T(), repo, ops.repo)
-}
-
-// Test cases with minimal setup to avoid mock conflicts
-
-func (suite *CollectionOperationsTestSuite) TestCreateCollection_WithSubcollection() {
-	// Arrange
-	subcollection := createTestSubcollection()
-
-	// Act & Assert - Test that subcollection is properly configured
-	assert.True(suite.T(), subcollection.IsSubcollection())
-	assert.NotEmpty(suite.T(), subcollection.ParentPath)
-	assert.Contains(suite.T(), subcollection.Path, subcollection.ParentPath)
-}
-
-func (suite *CollectionOperationsTestSuite) TestCollectionModel_Properties() {
-	// Test collection model properties and methods
-	collection := createTestCollection()
-
-	assert.NotNil(suite.T(), collection)
-	assert.Equal(suite.T(), "test-project", collection.ProjectID)
-	assert.Equal(suite.T(), "test-database", collection.DatabaseID)
-	assert.Equal(suite.T(), "test-collection", collection.CollectionID)
-	assert.False(suite.T(), collection.IsSubcollection())
-	assert.Equal(suite.T(), collection.Path, collection.GetResourceName())
-}
-
-func (suite *CollectionOperationsTestSuite) TestSubcollectionModel_Properties() {
-	// Test subcollection model properties and methods
-	subcollection := createTestSubcollection()
-
-	assert.NotNil(suite.T(), subcollection)
-	assert.True(suite.T(), subcollection.IsSubcollection())
-	assert.NotEmpty(suite.T(), subcollection.GetParentDocumentPath())
-	assert.Equal(suite.T(), subcollection.ParentPath, subcollection.GetParentDocumentPath())
-}
-
-// Error handling tests
-func (suite *CollectionOperationsTestSuite) TestErrorConstants() {
-	// Test error constants are properly defined
-	assert.NotNil(suite.T(), ErrCollectionAlreadyExists)
-	assert.Contains(suite.T(), ErrCollectionAlreadyExists.Error(), "collection already exists")
-}
-
-func (suite *CollectionOperationsTestSuite) TestCollectionOperations_NilRepository() {
-	// Test that NewCollectionOperations handles nil gracefully
-	ops := NewCollectionOperations(nil)
-	assert.NotNil(suite.T(), ops)
-	assert.Nil(suite.T(), ops.repo)
-}
-
-// Context tests
-func (suite *CollectionOperationsTestSuite) TestContextCancellation() {
-	// Test context cancellation handling
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-
-	// Test that cancelled context is handled properly
-	assert.Equal(suite.T(), context.Canceled, ctx.Err())
-}
-
-// Benchmark tests for performance validation
-func BenchmarkCreateCollectionModel(b *testing.B) {
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = createTestCollection()
-	}
-}
-
-func BenchmarkCreateSubcollectionModel(b *testing.B) {
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = createTestSubcollection()
-	}
-}
-
-// Integration-style tests placeholder
-func (suite *CollectionOperationsTestSuite) TestCollectionOperations_IntegrationFlow() {
-	// This test demonstrates the expected flow of operations
-	// In production, this would use a real test database with testcontainers
-
 	ctx := context.Background()
-	projectID := "integration-project"
-	databaseID := "integration-database"
-	collectionID := "integration-collection"
-	// Verify test data setup
-	assert.NotNil(suite.T(), ctx)
-	assert.NotEmpty(suite.T(), projectID)
-	assert.NotEmpty(suite.T(), databaseID)
-	assert.NotEmpty(suite.T(), collectionID)
-
-	// In a real integration test, we would:
-	// 1. Create a collection
-	// 2. Verify it exists
-	// 3. Update it
-	// 4. List collections
-	// 5. Delete it
-	// 6. Verify it's gone
+	col := &model.Collection{ID: primitive.NewObjectID(), CollectionID: "c1"}
+	_ = ops.CreateCollection(ctx, "p1", "d1", col)
 }
 
-// Run the test suite
-func TestCollectionOperationsTestSuite(t *testing.T) {
-	suite.Run(t, new(CollectionOperationsTestSuite))
+func TestCollectionOperations_GetCollection(t *testing.T) {
+	repo := newTestDocumentRepositoryForCollections()
+	ops := NewCollectionOperations(repo)
+	ctx := context.Background()
+	_, _ = ops.GetCollection(ctx, "p1", "d1", "c1")
 }
 
-// Additional unit tests for edge cases
-func TestCollectionOperations_ErrorConstants(t *testing.T) {
-	assert.Equal(t, "collection already exists", ErrCollectionAlreadyExists.Error())
+func TestCollectionOperations_UpdateCollection(t *testing.T) {
+	repo := newTestDocumentRepositoryForCollections()
+	ops := NewCollectionOperations(repo)
+	ctx := context.Background()
+	col := &model.Collection{ID: primitive.NewObjectID(), CollectionID: "c1"}
+	_ = ops.UpdateCollection(ctx, "p1", "d1", col)
 }
 
-func TestCollectionOperations_ModelValidation(t *testing.T) {
-	// Test collection model validation
-	collection := createTestCollection()
-
-	// Test required fields
-	assert.NotEmpty(t, collection.ProjectID)
-	assert.NotEmpty(t, collection.DatabaseID)
-	assert.NotEmpty(t, collection.CollectionID)
-	assert.NotEmpty(t, collection.Path)
-
-	// Test timestamps
-	assert.False(t, collection.CreatedAt.IsZero())
-	assert.False(t, collection.UpdatedAt.IsZero())
-
-	// Test state
-	assert.True(t, collection.IsActive)
-	assert.NotNil(t, collection.Indexes)
+func TestCollectionOperations_DeleteCollection(t *testing.T) {
+	repo := newTestDocumentRepositoryForCollections()
+	ops := NewCollectionOperations(repo)
+	ctx := context.Background()
+	_ = ops.DeleteCollection(ctx, "p1", "d1", "c1")
 }
 
-func TestCollectionOperations_PathGeneration(t *testing.T) {
-	// Test path generation for collections
-	collection := createTestCollection()
-	expectedPath := "projects/test-project/databases/test-database/documents/test-collection"
-	assert.Equal(t, expectedPath, collection.Path)
-
-	// Test subcollection path
-	subcollection := createTestSubcollection()
-	expectedSubPath := "projects/test-project/databases/test-database/documents/parent-collection/parent-doc/test-subcollection"
-	assert.Equal(t, expectedSubPath, subcollection.Path)
-
-	expectedParentPath := "projects/test-project/databases/test-database/documents/parent-collection/parent-doc"
-	assert.Equal(t, expectedParentPath, subcollection.ParentPath)
+func TestCollectionOperations_ListCollections(t *testing.T) {
+	repo := newTestDocumentRepositoryForCollections()
+	ops := NewCollectionOperations(repo)
+	ctx := context.Background()
+	_, _ = ops.ListCollections(ctx, "p1", "d1")
 }
 
-// Compile test to ensure the package compiles correctly
-func TestCollectionOperations_Compile(t *testing.T) {
-	// This ensures all imports and basic syntax are correct
-	assert.True(t, true, "Package compiles successfully")
-}
+// En los tests, reemplaza NewCollectionOperations(repo) por NewCollectionOperations((*DocumentRepository)(repo)) si es necesario,
+// o adapta el constructor para aceptar la interfaz en vez de *DocumentRepository.

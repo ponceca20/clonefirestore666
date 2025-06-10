@@ -1,407 +1,385 @@
 package http
 
 import (
-	"errors"
-	"regexp"
-	"strings"
 	"time"
 
 	"firestore-clone/internal/auth/domain/model"
 	"firestore-clone/internal/auth/usecase"
+	"firestore-clone/internal/shared/utils"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 )
 
-// Firestore project ID validation regex
-var (
-	projectIDRegex  = regexp.MustCompile(`^[a-z][-a-z0-9]{4,28}[a-z0-9]$`)
-	databaseIDRegex = regexp.MustCompile(`^[a-z][-a-z0-9]{0,62}[a-z0-9]$`)
-)
-
-// --- DTOs ---
-
-// RegisterRequest defines the structure for user registration with Firestore context.
-type RegisterRequest struct {
-	Email      string `json:"email" validate:"required,email"`
-	Password   string `json:"password" validate:"required,min=8"`
-	ProjectID  string `json:"projectId" validate:"required"`
-	DatabaseID string `json:"databaseId" validate:"required"`
-	TenantID   string `json:"tenantId,omitempty"`
-	FirstName  string `json:"firstName" validate:"required"`
-	LastName   string `json:"lastName" validate:"required"`
-	AvatarURL  string `json:"avatarUrl,omitempty" validate:"omitempty,url"`
-}
-
-// LoginRequest defines the structure for user login with Firestore context.
-type LoginRequest struct {
-	Email      string `json:"email" validate:"required,email"`
-	Password   string `json:"password" validate:"required"`
-	ProjectID  string `json:"projectId" validate:"required"`
-	DatabaseID string `json:"databaseId" validate:"required"`
-}
-
-// UserResponse is the DTO for user information.
-type UserResponse struct {
-	ID        string    `json:"id"`
-	Email     string    `json:"email"`
-	FirstName string    `json:"firstName,omitempty"`
-	LastName  string    `json:"lastName,omitempty"`
-	AvatarURL string    `json:"avatarUrl,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// AuthResponse is the response for successful authentication (register/login).
-type AuthResponse struct {
-	User    UserResponse `json:"user"`
-	Token   string       `json:"token,omitempty"` // Omitted if only sent in cookie
-	Message string       `json:"message"`
-}
-
-// ErrorResponse represents a standardized error response.
-type ErrorResponse struct {
-	Error   string `json:"error"`
-	Message string `json:"message"`
-	Code    int    `json:"code"`
-}
-
-// SuccessResponse represents a standardized success response.
-type SuccessResponse struct {
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-}
-
-// --- HTTP Handler ---
-
-// CookieConfig holds configuration for HTTP cookies.
-type CookieConfig struct {
-	Name          string
-	Path          string
-	Domain        string
-	MaxAgeSeconds int
-	Secure        bool
-	HTTPOnly      bool
-	SameSite      string
-}
-
-// AuthHTTPHandler handles HTTP requests for authentication using Fiber.
+// AuthHTTPHandler handles HTTP requests for authentication
 type AuthHTTPHandler struct {
-	usecase   usecase.AuthUsecaseInterface
-	validate  *validator.Validate
-	cookieCfg CookieConfig
+	usecase        usecase.AuthUsecaseInterface
+	cookieName     string
+	cookiePath     string
+	cookieDomain   string
+	cookieMaxAge   int
+	cookieSecure   bool
+	cookieHTTPOnly bool
+	cookieSameSite string
 }
 
-// NewAuthHTTPHandler creates a new instance of AuthHTTPHandler.
+// NewAuthHTTPHandler creates a new authentication HTTP handler
 func NewAuthHTTPHandler(
 	uc usecase.AuthUsecaseInterface,
-	cookieName string,
-	cookiePath string,
-	cookieDomain string,
-	cookieMaxAge int, // in seconds
-	cookieSecure bool,
-	cookieHttpOnly bool,
-	cookieSameSite string, // "lax", "strict", "none"
+	cookieName, cookiePath, cookieDomain string,
+	cookieMaxAge int,
+	cookieSecure, cookieHTTPOnly bool,
+	cookieSameSite string,
 ) *AuthHTTPHandler {
 	return &AuthHTTPHandler{
-		usecase:  uc,
-		validate: validator.New(),
-		cookieCfg: CookieConfig{
-			Name:          cookieName,
-			Path:          cookiePath,
-			Domain:        cookieDomain,
-			MaxAgeSeconds: cookieMaxAge,
-			Secure:        cookieSecure,
-			HTTPOnly:      cookieHttpOnly,
-			SameSite:      cookieSameSite,
-		},
+		usecase:        uc,
+		cookieName:     cookieName,
+		cookiePath:     cookiePath,
+		cookieDomain:   cookieDomain,
+		cookieMaxAge:   cookieMaxAge,
+		cookieSecure:   cookieSecure,
+		cookieHTTPOnly: cookieHTTPOnly,
+		cookieSameSite: cookieSameSite,
 	}
 }
 
-// SetupAuthRoutes registers the authentication routes with the provided Fiber router.
-func (h *AuthHTTPHandler) SetupAuthRoutes(router fiber.Router) {
-	authGroup := router.Group("/auth")
-	authGroup.Post("/register", h.Register)
-	authGroup.Post("/login", h.Login)
-	authGroup.Post("/logout", h.Logout)
-	authGroup.Get("/validate", h.Validate)
-	authGroup.Get("/me", h.GetCurrentUser) // Alternative endpoint name for validation
-}
-
-// SetupAuthRoutesWithMiddleware registers routes with optional middleware for protected endpoints
+// SetupAuthRoutesWithMiddleware sets up authentication routes with middleware
 func (h *AuthHTTPHandler) SetupAuthRoutesWithMiddleware(router fiber.Router, middleware *AuthMiddleware) {
-	authGroup := router.Group("/auth")
-	authGroup.Post("/register", h.Register)
-	authGroup.Post("/login", h.Login)
-	authGroup.Post("/logout", h.Logout)
+	// Public routes (no authentication required)
+	router.Post("/register", h.Register)
+	router.Post("/login", h.Login)
+	router.Post("/refresh", h.RefreshToken)
 
-	// Protected endpoints
-	if middleware != nil {
-		authGroup.Get("/validate", middleware.RequireAuth(), h.Validate)
-		authGroup.Get("/me", middleware.RequireAuth(), h.GetCurrentUser)
-	} else {
-		authGroup.Get("/validate", h.Validate)
-		authGroup.Get("/me", h.GetCurrentUser)
-	}
+	// Protected routes (authentication required)
+	protected := router.Group("/", middleware.Protect())
+	protected.Post("/logout", h.Logout)
+	protected.Get("/me", h.GetCurrentUser)
+	protected.Put("/me", h.UpdateCurrentUser)
+	protected.Post("/change-password", h.ChangePassword)
+
+	// Admin routes (for tenant management)
+	admin := router.Group("/admin", middleware.RequireRole("admin"))
+	admin.Get("/users", h.ListUsers)
+	admin.Get("/users/:userId", h.GetUser)
+	admin.Delete("/users/:userId", h.DeleteUser)
 }
 
-// Register handles user registration with Firestore project validation.
+// Register handles user registration
 func (h *AuthHTTPHandler) Register(c *fiber.Ctx) error {
-	var req RegisterRequest
-
+	var req usecase.RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid request payload", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
 	}
 
-	if err := h.validate.Struct(&req); err != nil {
-		return h.sendValidationErrorResponse(c, err)
+	// Add tenant context if available
+	if tenantID := c.Get("X-Tenant-ID"); tenantID != "" {
+		req.TenantID = tenantID
 	}
-
-	// Validate Firestore project ID format
-	if !projectIDRegex.MatchString(req.ProjectID) {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format. Must follow Google Cloud project naming conventions", nil)
+	if orgID := c.Get("X-Organization-ID"); orgID != "" {
+		req.OrganizationID = orgID
 	}
-
-	// Validate Firestore database ID format
-	if !databaseIDRegex.MatchString(req.DatabaseID) {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", nil)
-	}
-
-	// Convert to usecase request format
-	ucReq := usecase.RegisterRequest{
-		Email:      req.Email,
-		Password:   req.Password,
-		ProjectID:  req.ProjectID,
-		DatabaseID: req.DatabaseID,
-		TenantID:   req.TenantID,
-		FirstName:  req.FirstName,
-		LastName:   req.LastName,
-		AvatarURL:  req.AvatarURL,
-	}
-
-	user, token, err := h.usecase.Register(c.Context(), ucReq)
+	response, err := h.usecase.Register(c.Context(), req)
 	if err != nil {
-		return h.mapAuthErrorToFiberError(c, err)
+		// Handle specific error types
+		if err == model.ErrUserExists {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error": "Email already registered",
+			})
+		}
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 
-	h.setCookie(c, token)
+	// Set cookie
+	h.setCookie(c, response.AccessToken)
 
-	return c.Status(fiber.StatusCreated).JSON(AuthResponse{
-		User:    h.modelUserToUserResponse(user),
-		Token:   token,
-		Message: "User registered successfully",
-	})
+	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
-// Login handles user login.
+// Login handles user login
 func (h *AuthHTTPHandler) Login(c *fiber.Ctx) error {
-	var req LoginRequest
-
+	var req usecase.LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid request payload", err)
-	}
-	if err := h.validate.Struct(&req); err != nil {
-		return h.sendValidationErrorResponse(c, err)
-	}
-
-	// Validate Firestore project ID format
-	if !projectIDRegex.MatchString(req.ProjectID) {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format. Must follow Google Cloud project naming conventions", nil)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
 	}
 
-	// Validate Firestore database ID format
-	if !databaseIDRegex.MatchString(req.DatabaseID) {
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", nil)
+	// Add tenant context if available
+	if tenantID := c.Get("X-Tenant-ID"); tenantID != "" {
+		req.TenantID = tenantID
 	}
-
-	// Convert to usecase request format
-	ucReq := usecase.LoginRequest{
-		Email:      req.Email,
-		Password:   req.Password,
-		ProjectID:  req.ProjectID,
-		DatabaseID: req.DatabaseID,
-	}
-	user, token, err := h.usecase.Login(c.Context(), ucReq)
+	response, err := h.usecase.Login(c.Context(), req)
 	if err != nil {
-		return h.mapAuthErrorToFiberError(c, err)
-	}
-
-	h.setCookie(c, token)
-
-	return c.Status(fiber.StatusOK).JSON(AuthResponse{
-		User:    h.modelUserToUserResponse(user),
-		Token:   token,
-		Message: "Login successful",
-	})
-}
-
-// Logout handles user logout.
-func (h *AuthHTTPHandler) Logout(c *fiber.Ctx) error {
-	// Clear the authentication cookie
-	h.clearCookie(c)
-
-	return c.Status(fiber.StatusOK).JSON(SuccessResponse{
-		Message: "Logout successful",
-	})
-}
-
-// Validate handles token validation and returns user info.
-// This endpoint would typically be protected by an auth middleware.
-func (h *AuthHTTPHandler) Validate(c *fiber.Ctx) error {
-	return h.GetCurrentUser(c)
-}
-
-// GetCurrentUser returns the current authenticated user.
-func (h *AuthHTTPHandler) GetCurrentUser(c *fiber.Ctx) error {
-	tokenString := h.extractToken(c)
-	if tokenString == "" {
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "No token provided", nil)
-	}
-
-	user, err := h.usecase.GetUserFromToken(c.Context(), tokenString)
-	if err != nil {
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid or expired token", err)
-	}
-
-	return c.Status(fiber.StatusOK).JSON(SuccessResponse{
-		Message: "User retrieved successfully",
-		Data:    h.modelUserToUserResponse(user),
-	})
-}
-
-// --- Helper methods ---
-
-// extractToken extracts the token from Authorization header or cookie.
-func (h *AuthHTTPHandler) extractToken(c *fiber.Ctx) string {
-	// Try Authorization header first
-	authHeader := c.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
-	}
-
-	// Fallback to cookie
-	return c.Cookies(h.cookieCfg.Name)
-}
-
-// setCookie sets the authentication cookie.
-func (h *AuthHTTPHandler) setCookie(c *fiber.Ctx, token string) {
-	c.Cookie(&fiber.Cookie{
-		Name:     h.cookieCfg.Name,
-		Value:    token,
-		Path:     h.cookieCfg.Path,
-		Domain:   h.cookieCfg.Domain,
-		MaxAge:   h.cookieCfg.MaxAgeSeconds,
-		Secure:   h.cookieCfg.Secure,
-		HTTPOnly: h.cookieCfg.HTTPOnly,
-		SameSite: h.cookieCfg.SameSite,
-	})
-}
-
-// clearCookie clears the authentication cookie.
-func (h *AuthHTTPHandler) clearCookie(c *fiber.Ctx) {
-	// Set the cookie with both MaxAge -1 and an expired date to ensure clearing
-	expiredTime := time.Now().Add(-24 * time.Hour)
-	c.Cookie(&fiber.Cookie{
-		Name:     h.cookieCfg.Name,
-		Value:    "",
-		Path:     h.cookieCfg.Path,
-		Domain:   h.cookieCfg.Domain,
-		MaxAge:   -1,
-		Expires:  expiredTime,
-		Secure:   h.cookieCfg.Secure,
-		HTTPOnly: h.cookieCfg.HTTPOnly,
-		SameSite: h.cookieCfg.SameSite,
-	})
-}
-
-// modelUserToUserResponse converts model.User to UserResponse.
-func (h *AuthHTTPHandler) modelUserToUserResponse(user *model.User) UserResponse {
-	return UserResponse{
-		ID:        user.ID,
-		Email:     user.Email,
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		AvatarURL: user.AvatarURL,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-	}
-}
-
-// sendErrorResponse sends a standardized error response.
-func (h *AuthHTTPHandler) sendErrorResponse(c *fiber.Ctx, status int, message string, err error) error {
-	response := ErrorResponse{
-		Error:   message,
-		Message: message,
-		Code:    status,
-	}
-
-	if err != nil && fiber.IsChild() { // Only include error details in development
-		response.Error = err.Error()
-	}
-
-	return c.Status(status).JSON(response)
-}
-
-// sendValidationErrorResponse sends a validation error response.
-func (h *AuthHTTPHandler) sendValidationErrorResponse(c *fiber.Ctx, err error) error {
-	var validationErrors []string
-
-	if validatorErr, ok := err.(validator.ValidationErrors); ok {
-		for _, fieldErr := range validatorErr {
-			validationErrors = append(validationErrors, h.getValidationErrorMessage(fieldErr))
+		// Handle specific error types
+		switch err {
+		case model.ErrUserNotFound, model.ErrInvalidPassword:
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid email or password",
+			})
+		case model.ErrAccountLocked:
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Account is locked",
+			})
+		case model.ErrAccountInactive:
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Account is inactive",
+			})
+		case model.ErrTenantMismatch:
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Access denied for this tenant",
+			})
+		default:
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": err.Error(),
+			})
 		}
 	}
 
-	return c.Status(fiber.StatusBadRequest).JSON(ErrorResponse{
-		Error:   "Validation failed",
-		Message: strings.Join(validationErrors, "; "),
-		Code:    fiber.StatusBadRequest,
+	// Set cookie
+	h.setCookie(c, response.AccessToken)
+
+	return c.JSON(response)
+}
+
+// Logout handles user logout
+func (h *AuthHTTPHandler) Logout(c *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	err = h.usecase.Logout(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Clear cookie
+	h.clearCookie(c)
+
+	return c.JSON(fiber.Map{
+		"message": "Logged out successfully",
 	})
 }
 
-// getValidationErrorMessage returns a human-readable validation error message.
-func (h *AuthHTTPHandler) getValidationErrorMessage(err validator.FieldError) string {
-	fieldName := strings.ToLower(err.Field())
-	switch err.Tag() {
-	case "required":
-		return fieldName + " is required"
-	case "email":
-		return fieldName + " must be a valid email address"
-	case "min":
-		return fieldName + " must be at least " + err.Param() + " characters long"
-	default:
-		return fieldName + " is invalid"
+// RefreshToken handles token refresh
+func (h *AuthHTTPHandler) RefreshToken(c *fiber.Ctx) error {
+	var req struct {
+		RefreshToken string `json:"refreshToken"`
 	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	response, err := h.usecase.RefreshToken(c.Context(), req.RefreshToken)
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Set new cookie
+	h.setCookie(c, response.AccessToken)
+
+	return c.JSON(response)
 }
 
-// mapAuthErrorToFiberError traduce errores de negocio a códigos HTTP correctos
-func (h *AuthHTTPHandler) mapAuthErrorToFiberError(c *fiber.Ctx, err error) error {
-	switch {
-	case errors.Is(err, usecase.ErrEmailTaken):
-		return h.sendErrorResponse(c, fiber.StatusConflict, "Email is already registered", err)
-	case errors.Is(err, usecase.ErrInvalidCredentials):
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
-	case errors.Is(err, usecase.ErrUserNotFound):
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
-	case errors.Is(err, usecase.ErrInvalidEmailFormat):
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid email format", err)
-	case errors.Is(err, usecase.ErrWeakPassword):
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Password does not meet strength requirements", err)
-	case errors.Is(err, usecase.ErrInvalidProjectID):
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid project ID format", err)
-	case errors.Is(err, usecase.ErrInvalidDatabaseID):
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, "Invalid database ID format", err)
-	case strings.Contains(err.Error(), "required"):
-		return h.sendErrorResponse(c, fiber.StatusBadRequest, err.Error(), err)
-	case strings.Contains(err.Error(), "failed to get user"):
-		return h.sendErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials", err)
-	case strings.Contains(err.Error(), "failed to check existing user"):
-		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
-	case strings.Contains(err.Error(), "failed to create user"):
-		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
-	case strings.Contains(err.Error(), "failed to generate token"):
-		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
-	default:
-		return h.sendErrorResponse(c, fiber.StatusInternalServerError, "Internal server error", err)
+// GetCurrentUser returns current user information
+func (h *AuthHTTPHandler) GetCurrentUser(c *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
 	}
+
+	user, err := h.usecase.GetUserByID(c.Context(), userID, "")
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(user)
+}
+
+// UpdateCurrentUser updates current user information
+func (h *AuthHTTPHandler) UpdateCurrentUser(c *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	// Get current user
+	user, err := h.usecase.GetUserByID(c.Context(), userID, "")
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	// Parse update request
+	var updateReq struct {
+		FirstName string `json:"firstName"`
+		LastName  string `json:"lastName"`
+		Phone     string `json:"phone"`
+	}
+	if err := c.BodyParser(&updateReq); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	// Update user fields
+	if updateReq.FirstName != "" {
+		user.FirstName = updateReq.FirstName
+	}
+	if updateReq.LastName != "" {
+		user.LastName = updateReq.LastName
+	}
+	if updateReq.Phone != "" {
+		user.Phone = updateReq.Phone
+	}
+
+	err = h.usecase.UpdateUser(c.Context(), user)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(user)
+}
+
+// ChangePassword handles password change
+func (h *AuthHTTPHandler) ChangePassword(c *fiber.Ctx) error {
+	userID, err := utils.GetUserIDFromContext(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+			"error": "Unauthorized",
+		})
+	}
+
+	var req struct {
+		OldPassword string `json:"oldPassword"`
+		NewPassword string `json:"newPassword"`
+	}
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+		})
+	}
+
+	err = h.usecase.ChangePassword(c.Context(), userID, req.OldPassword, req.NewPassword)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Password changed successfully",
+	})
+}
+
+// ListUsers lists users (admin only)
+func (h *AuthHTTPHandler) ListUsers(c *fiber.Ctx) error {
+	tenantID, err := utils.GetTenantIDFromContext(c.Context())
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Tenant ID required",
+		})
+	}
+
+	users, err := h.usecase.GetUsersByTenant(c.Context(), tenantID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"users": users,
+		"total": len(users),
+	})
+}
+
+// GetUser gets a specific user (admin only)
+func (h *AuthHTTPHandler) GetUser(c *fiber.Ctx) error {
+	userID := c.Params("userId")
+	if userID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User ID required",
+		})
+	}
+
+	user, err := h.usecase.GetUserByID(c.Context(), userID, "")
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(user)
+}
+
+// DeleteUser deletes a user (admin only)
+func (h *AuthHTTPHandler) DeleteUser(c *fiber.Ctx) error {
+	userID := c.Params("userId")
+	if userID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "User ID required",
+		})
+	}
+
+	err := h.usecase.DeleteUser(c.Context(), userID)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "User deleted successfully",
+	})
+}
+
+// Helper methods
+
+func (h *AuthHTTPHandler) setCookie(c *fiber.Ctx, token string) {
+	c.Cookie(&fiber.Cookie{
+		Name:     h.cookieName,
+		Value:    token,
+		Path:     h.cookiePath,
+		Domain:   h.cookieDomain,
+		MaxAge:   h.cookieMaxAge,
+		Secure:   h.cookieSecure,
+		HTTPOnly: h.cookieHTTPOnly,
+		SameSite: h.cookieSameSite,
+		Expires:  time.Now().Add(time.Duration(h.cookieMaxAge) * time.Second),
+	})
+}
+
+func (h *AuthHTTPHandler) clearCookie(c *fiber.Ctx) {
+	c.Cookie(&fiber.Cookie{
+		Name:     h.cookieName,
+		Value:    "",
+		Path:     h.cookiePath,
+		Domain:   h.cookieDomain,
+		MaxAge:   -1,
+		Secure:   h.cookieSecure,
+		HTTPOnly: h.cookieHTTPOnly,
+		SameSite: h.cookieSameSite,
+		Expires:  time.Now().Add(-1 * time.Hour),
+	})
 }

@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -43,17 +42,8 @@ type FirestoreUsecaseInterface interface {
 	CreateIndex(ctx context.Context, req CreateIndexRequest) (*model.Index, error)
 	DeleteIndex(ctx context.Context, req DeleteIndexRequest) error
 	ListIndexes(ctx context.Context, req ListIndexesRequest) ([]model.Index, error)
-
 	// Query operations
 	RunQuery(ctx context.Context, req QueryRequest) ([]*model.Document, error)
-
-	// Legacy operations (for HTTP API compatibility)
-	CreateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error)
-	GetDocumentLegacy(ctx context.Context, path string) (map[string]interface{}, error)
-	UpdateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error)
-	DeleteDocumentLegacy(ctx context.Context, path string) error
-	ListDocumentsLegacy(ctx context.Context, path string, limit int, pageToken string) ([]*model.Document, string, error)
-	RunQueryLegacy(ctx context.Context, projectID string, queryJSON string) ([]*model.Document, error)
 
 	// Transaction operations
 	BeginTransaction(ctx context.Context, projectID string) (string, error)
@@ -625,74 +615,6 @@ func (uc *FirestoreUsecase) DeleteDocumentByPath(ctx context.Context, path strin
 	return uc.deleteDocumentInternal(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, documentID)
 }
 
-// ListDocumentsLegacy lists documents in a collection using legacy path format
-func (uc *FirestoreUsecase) ListDocumentsLegacy(ctx context.Context, path string, limit int, pageToken string) ([]*model.Document, string, error) {
-	uc.logger.Info("Listing documents via legacy API", "path", path, "limit", limit)
-
-	pathInfo, err := firestore.ParseFirestorePath(path)
-	if err != nil {
-		return nil, "", fmt.Errorf("invalid path format: %w", err)
-	}
-
-	// Extract collection ID from document path
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 1 {
-		return nil, "", fmt.Errorf("invalid collection path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-
-	// Use the repository's ListDocuments method
-	docs, nextPageToken, err := uc.firestoreRepo.ListDocuments(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, int32(limit), pageToken, "", false)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to list documents: %w", err)
-	}
-
-	return docs, nextPageToken, nil
-}
-
-// RunQueryLegacy executes a structured query using legacy JSON format
-func (uc *FirestoreUsecase) RunQueryLegacy(ctx context.Context, projectID string, queryJSON string) ([]*model.Document, error) {
-	uc.logger.Info("Running query via legacy API", "projectID", projectID)
-
-	// Parse the JSON query
-	var queryReq map[string]interface{}
-	if err := json.Unmarshal([]byte(queryJSON), &queryReq); err != nil {
-		return nil, fmt.Errorf("invalid query JSON: %w", err)
-	}
-
-	// Extract parent path to determine collection
-	parent, ok := queryReq["parent"].(string)
-	if !ok {
-		return nil, fmt.Errorf("parent field is required in query")
-	}
-
-	// Parse parent path to extract collection info
-	pathInfo, err := firestore.ParseFirestorePath(parent)
-	if err != nil {
-		return nil, fmt.Errorf("invalid parent path format: %w", err)
-	}
-
-	// Extract collection ID from document path
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 1 {
-		return nil, fmt.Errorf("invalid parent path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-	// Create a basic query structure
-	query := &model.Query{
-		CollectionID: collectionID,
-		Path:         parent,
-	}
-
-	// Execute the query using the repository
-	docs, err := uc.firestoreRepo.RunQuery(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to run query: %w", err)
-	}
-
-	return docs, nil
-}
-
 // BeginTransaction starts a new transaction
 func (uc *FirestoreUsecase) BeginTransaction(ctx context.Context, projectID string) (string, error) {
 	uc.logger.Info("Beginning transaction", "projectID", projectID)
@@ -715,141 +637,11 @@ func (uc *FirestoreUsecase) CommitTransaction(ctx context.Context, projectID str
 	if !strings.HasPrefix(transactionID, "tx_") {
 		return fmt.Errorf("invalid transaction ID format: %s", transactionID)
 	}
-
 	// For now, we'll just log the commit
 	// In a full implementation, this would interact with the repository to commit the transaction
 	uc.logger.Info("Transaction committed", "transactionID", transactionID)
 
 	return nil
-}
-
-// Legacy methods for backward compatibility
-func (uc *FirestoreUsecase) CreateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
-	uc.logger.Info("Creating document via legacy API", "path", path)
-
-	pathInfo, err := firestore.ParseFirestorePath(path)
-	if err != nil {
-		return nil, fmt.Errorf("invalid path format: %w", err)
-	}
-
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 2 {
-		return nil, fmt.Errorf("invalid document path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-	documentID := segments[1]
-
-	fieldData := make(map[string]*model.FieldValue)
-	for key, value := range data {
-		fieldData[key] = model.NewFieldValue(value)
-	}
-
-	doc, err := uc.createDocumentInternal(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, documentID, fieldData)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]interface{})
-	result["name"] = doc.Path
-	result["createTime"] = doc.CreateTime.Format(time.RFC3339)
-	result["updateTime"] = doc.UpdateTime.Format(time.RFC3339)
-
-	fields := make(map[string]interface{})
-	for key, fieldValue := range doc.Fields {
-		fields[key] = fieldValue.Value
-	}
-	result["fields"] = fields
-
-	return result, nil
-}
-
-func (uc *FirestoreUsecase) GetDocumentLegacy(ctx context.Context, path string) (map[string]interface{}, error) {
-	uc.logger.Info("Getting document via legacy API", "path", path)
-
-	pathInfo, err := firestore.ParseFirestorePath(path)
-	if err != nil {
-		return nil, fmt.Errorf("invalid path format: %w", err)
-	}
-
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 2 {
-		return nil, fmt.Errorf("invalid document path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-	documentID := segments[1]
-
-	doc, err := uc.getDocumentInternal(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, documentID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]interface{})
-	result["name"] = doc.Path
-	result["createTime"] = doc.CreateTime.Format(time.RFC3339)
-	result["updateTime"] = doc.UpdateTime.Format(time.RFC3339)
-
-	fields := make(map[string]interface{})
-	for key, fieldValue := range doc.Fields {
-		fields[key] = fieldValue.Value
-	}
-	result["fields"] = fields
-
-	return result, nil
-}
-
-func (uc *FirestoreUsecase) UpdateDocumentLegacy(ctx context.Context, path string, data map[string]interface{}) (map[string]interface{}, error) {
-	uc.logger.Info("Updating document via legacy API", "path", path)
-
-	pathInfo, err := firestore.ParseFirestorePath(path)
-	if err != nil {
-		return nil, fmt.Errorf("invalid path format: %w", err)
-	}
-
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 2 {
-		return nil, fmt.Errorf("invalid document path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-	documentID := segments[1]
-
-	fieldData := make(map[string]*model.FieldValue)
-	for key, value := range data {
-		fieldData[key] = model.NewFieldValue(value)
-	}
-	doc, err := uc.updateDocumentInternal(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, documentID, fieldData, []string{})
-	if err != nil {
-		return nil, err
-	}
-
-	result := make(map[string]interface{})
-	result["name"] = doc.Path
-	result["createTime"] = doc.CreateTime.Format(time.RFC3339)
-	result["updateTime"] = doc.UpdateTime.Format(time.RFC3339)
-
-	fields := make(map[string]interface{})
-	for key, fieldValue := range doc.Fields {
-		fields[key] = fieldValue.Value
-	}
-	result["fields"] = fields
-
-	return result, nil
-}
-
-func (uc *FirestoreUsecase) DeleteDocumentLegacy(ctx context.Context, path string) error {
-	uc.logger.Info("Deleting document via legacy API", "path", path)
-
-	pathInfo, err := firestore.ParseFirestorePath(path)
-	if err != nil {
-		return fmt.Errorf("invalid path format: %w", err)
-	}
-	segments := strings.Split(pathInfo.DocumentPath, "/")
-	if len(segments) < 2 {
-		return fmt.Errorf("invalid document path: %s", pathInfo.DocumentPath)
-	}
-	collectionID := segments[0]
-	documentID := segments[1]
-
-	return uc.deleteDocumentInternal(ctx, pathInfo.ProjectID, pathInfo.DatabaseID, collectionID, documentID)
 }
 
 // validateBatchOperation validates a single batch operation
@@ -912,21 +704,58 @@ func (uc *FirestoreUsecase) validateIndex(index *model.Index) error {
 }
 
 // validateFirestoreHierarchy validates that the project, database, and optionally collection exist
+// and creates them automatically if they don't exist (Firestore-like behavior)
 func (uc *FirestoreUsecase) validateFirestoreHierarchy(ctx context.Context, projectID, databaseID, collectionID string) error {
-	// Validate project exists
-	if _, err := uc.firestoreRepo.GetProject(ctx, projectID); err != nil {
-		return fmt.Errorf("project not found: %w", err)
+	// Check and create project if it doesn't exist
+	_, err := uc.firestoreRepo.GetProject(ctx, projectID)
+	if err != nil {
+		uc.logger.Info("Project not found, creating automatically", "projectID", projectID)
+		// Create project automatically
+		project := &model.Project{
+			ProjectID:   projectID,
+			DisplayName: projectID,
+			LocationID:  "us-central1",         // Default location
+			OwnerEmail:  "system@auto-created", // Auto-created project
+			State:       model.ProjectStateActive,
+		}
+		if err := uc.firestoreRepo.CreateProject(ctx, project); err != nil {
+			return fmt.Errorf("failed to auto-create project: %w", err)
+		}
+		uc.logger.Info("Project created automatically", "projectID", projectID)
 	}
 
-	// Validate database exists
-	if _, err := uc.firestoreRepo.GetDatabase(ctx, projectID, databaseID); err != nil {
-		return fmt.Errorf("database not found: %w", err)
+	// Check and create database if it doesn't exist
+	_, err = uc.firestoreRepo.GetDatabase(ctx, projectID, databaseID)
+	if err != nil {
+		uc.logger.Info("Database not found, creating automatically", "projectID", projectID, "databaseID", databaseID)
+		// Create database automatically
+		database := model.NewDefaultDatabase(projectID)
+		database.DatabaseID = databaseID
+		if databaseID == "" || databaseID == "(default)" {
+			database.DatabaseID = "(default)"
+		}
+		if err := uc.firestoreRepo.CreateDatabase(ctx, projectID, database); err != nil {
+			return fmt.Errorf("failed to auto-create database: %w", err)
+		}
+		uc.logger.Info("Database created automatically", "projectID", projectID, "databaseID", database.DatabaseID)
 	}
 
-	// Validate collection exists if provided
+	// Check and create collection if provided and doesn't exist
 	if collectionID != "" {
-		if _, err := uc.firestoreRepo.GetCollection(ctx, projectID, databaseID, collectionID); err != nil {
-			return fmt.Errorf("collection not found: %w", err)
+		_, err := uc.firestoreRepo.GetCollection(ctx, projectID, databaseID, collectionID)
+		if err != nil {
+			uc.logger.Info("Collection not found, creating automatically", "projectID", projectID, "databaseID", databaseID, "collectionID", collectionID)
+			// Create collection automatically
+			collection := &model.Collection{
+				CollectionID: collectionID,
+				ProjectID:    projectID,
+				DatabaseID:   databaseID,
+				Path:         fmt.Sprintf("projects/%s/databases/%s/documents/%s", projectID, databaseID, collectionID),
+			}
+			if err := uc.firestoreRepo.CreateCollection(ctx, projectID, databaseID, collection); err != nil {
+				return fmt.Errorf("failed to auto-create collection: %w", err)
+			}
+			uc.logger.Info("Collection created automatically", "projectID", projectID, "databaseID", databaseID, "collectionID", collectionID)
 		}
 	}
 

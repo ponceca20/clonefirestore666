@@ -102,11 +102,114 @@ func (m *AuthMiddleware) RequestID() fiber.Handler {
 	})
 }
 
+// Protect returns middleware that requires authentication
+func (m *AuthMiddleware) Protect() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		token, err := m.extractToken(c)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Authentication required",
+			})
+		}
+
+		claims, err := m.usecase.ValidateToken(c.Context(), token)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
+		}
+
+		// Add user context using context.WithValue (no utils.WithUserID, etc.)
+		ctx := c.UserContext()
+		ctx = context.WithValue(ctx, contextkeys.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, contextkeys.UserEmailKey, claims.Email)
+		if claims.TenantID != "" {
+			ctx = context.WithValue(ctx, contextkeys.TenantIDKey, claims.TenantID)
+		}
+		if claims.OrganizationID != "" {
+			ctx = context.WithValue(ctx, contextkeys.OrganizationIDKey, claims.OrganizationID)
+		}
+		if claims.ProjectID != "" {
+			ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, claims.ProjectID)
+		}
+		if claims.DatabaseID != "" {
+			ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, claims.DatabaseID)
+		}
+
+		c.SetUserContext(ctx)
+		return c.Next()
+	}
+}
+
+// RequireRole returns middleware that requires a specific role
+func (m *AuthMiddleware) RequireRole(role string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// First run protection middleware
+		if err := m.Protect()(c); err != nil {
+			return err
+		}
+
+		token, err := m.extractToken(c)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Authentication required",
+			})
+		}
+
+		claims, err := m.usecase.ValidateToken(c.Context(), token)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
+		}
+
+		if !claims.HasRole(role) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Insufficient permissions",
+			})
+		}
+
+		return c.Next()
+	}
+}
+
+// RequirePermission returns middleware that requires a specific permission
+func (m *AuthMiddleware) RequirePermission(permission string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// First run protection middleware
+		if err := m.Protect()(c); err != nil {
+			return err
+		}
+
+		token, err := m.extractToken(c)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Authentication required",
+			})
+		}
+
+		claims, err := m.usecase.ValidateToken(c.Context(), token)
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
+		}
+
+		if !claims.HasPermission(permission) {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+				"error": "Insufficient permissions",
+			})
+		}
+
+		return c.Next()
+	}
+}
+
 // RequireAuth middleware that requires authentication with Firestore context injection
 func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		token := m.extractToken(c)
-		if token == "" {
+		token, err := m.extractToken(c)
+		if err != nil || token == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 				"error": "Authorization token required",
 			})
@@ -152,8 +255,8 @@ func (m *AuthMiddleware) RequireAuth() fiber.Handler {
 // OptionalAuth middleware that optionally validates authentication
 func (m *AuthMiddleware) OptionalAuth() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		token := m.extractToken(c)
-		if token == "" {
+		token, err := m.extractToken(c)
+		if err != nil || token == "" {
 			return c.Next() // Continue without authentication
 		}
 
@@ -196,15 +299,28 @@ func (m *AuthMiddleware) FirestoreProjectContext() fiber.Handler {
 }
 
 // extractToken extracts the token from Authorization header or cookie
-func (m *AuthMiddleware) extractToken(c *fiber.Ctx) string {
+func (m *AuthMiddleware) extractToken(c *fiber.Ctx) (string, error) {
 	// Try Authorization header first
 	authHeader := c.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		return strings.TrimPrefix(authHeader, "Bearer ")
+	if authHeader != "" {
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			return strings.TrimPrefix(authHeader, "Bearer "), nil
+		}
 	}
 
-	// Fallback to cookie
-	return c.Cookies(m.cookieName)
+	// Try cookie
+	token := c.Cookies(m.cookieName)
+	if token != "" {
+		return token, nil
+	}
+
+	// Try query parameter (for WebSocket connections)
+	token = c.Query("token")
+	if token != "" {
+		return token, nil
+	}
+
+	return "", fiber.NewError(fiber.StatusUnauthorized, "No authentication token found")
 }
 
 // GetUserID helper function to get user ID from context

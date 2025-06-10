@@ -126,5 +126,5 @@ func getUserID(user *model.User) string {
 	if user == nil {
 		return "anonymous"
 	}
-	return user.ID
+	return user.ID.Hex()
 }

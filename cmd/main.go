@@ -9,13 +9,18 @@ import (
 	"syscall"
 	"time"
 
-	"firestore-clone/internal/auth/config"
+	authConfig "firestore-clone/internal/auth/config"
 	"firestore-clone/internal/di"
+	firestoreConfig "firestore-clone/internal/firestore/config"
+	"firestore-clone/internal/shared/database"
 	"firestore-clone/internal/shared/logger"
 
 	"github.com/caarlos0/env/v6"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/helmet"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
+	"github.com/gofiber/fiber/v2/middleware/monitor"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -25,176 +30,238 @@ import (
 // ServerConfig holds server configuration
 type ServerConfig struct {
 	Host string `env:"SERVER_HOST" envDefault:"localhost"`
-	Port string `env:"SERVER_PORT" envDefault:"3000"`
+	Port string `env:"SERVER_PORT" envDefault:"3030"`
 }
 
-func main() {
-	fmt.Println("🚀 Firestore Clone - Starting Application...")
+// getStatusText returns HTTP status text for a given status code
 
-	// Load environment variables from .env file
+func main() {
+	// Load environment variables
 	if err := godotenv.Load(); err != nil {
-		log.Printf("Warning: Could not load .env file: %v", err)
-	}
-	// Load server configuration
-	serverCfg := &ServerConfig{}
-	if err := env.Parse(serverCfg); err != nil {
-		log.Fatalf("Failed to load server configuration: %v", err)
+		log.Printf("Warning: No .env file found: %v", err)
 	}
 
 	// Initialize logger
 	appLogger := logger.NewLogger()
-	appLogger.Info("Application configuration loaded successfully")
 
-	// Initialize Dependency Injection Container
-	container := di.NewContainer()
-	defer func() {
-		if err := container.Close(); err != nil {
-			appLogger.Error("Failed to close container: %v", err)
+	// Load configurations
+	authCfg, err := authConfig.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load auth config: %v", err)
+	}
+
+	firestoreCfg, err := firestoreConfig.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load firestore config: %v", err)
+	}
+
+	// Initialize MongoDB client
+	client, err := initMongoDB(authCfg.MongoDBURI)
+	if err != nil {
+		log.Fatalf("Failed to initialize MongoDB: %v", err)
+	}
+	defer client.Disconnect(context.Background())
+
+	// Initialize tenant manager for multitenant support
+	tenantConfig := &database.TenantConfig{
+		DatabasePrefix:     authCfg.TenantDBPrefix,
+		MaxConnections:     authCfg.MaxTenantConnections,
+		ConnectionTimeout:  authCfg.TenantConnectionTTL,
+		AutoCreateDatabase: true,
+		MaxPoolSize:        10,
+		MinPoolSize:        2,
+	}
+	tenantManager := database.NewTenantManager(client, tenantConfig, appLogger)
+
+	// Initialize dependency injection container
+	container, err := di.NewMultitenantContainer(client, tenantManager, authCfg, firestoreCfg, appLogger)
+	if err != nil {
+		log.Fatalf("Failed to initialize DI container: %v", err)
+	}
+
+	// Get modules from container
+	authModule := container.GetAuthModule()
+	firestoreModule := container.GetFirestoreModule()
+
+	// Initialize Fiber app
+	app := fiber.New(fiber.Config{
+		AppName:      "Firestore Clone - Multitenant",
+		ReadTimeout:  authCfg.ReadTimeout,
+		WriteTimeout: authCfg.WriteTimeout,
+		IdleTimeout:  authCfg.IdleTimeout,
+		ErrorHandler: globalErrorHandler,
+	})
+
+	// Apply global middleware
+	setupMiddleware(app, authCfg, firestoreCfg)
+
+	// Health check endpoint
+	app.Get("/health", healthCheck(client, tenantManager))
+
+	// Monitoring endpoint
+	app.Get("/metrics", monitor.New(monitor.Config{Title: "Firestore Clone Metrics"}))
+
+	// Register module routes
+	api := app.Group("/api/v1")
+
+	// Auth routes (no tenant requirement for login/register)
+	authModule.RegisterRoutes(api.Group("/auth"))
+
+	// Firestore routes (tenant-aware)
+	firestoreModule.RegisterRoutes(api)
+
+	// Start background services
+	go func() {
+		firestoreModule.StartRealtimeServices()
+		appLogger.Info("Realtime services started")
+	}()
+
+	// Load server config
+	var serverCfg ServerConfig
+	if err := env.Parse(&serverCfg); err != nil {
+		log.Fatalf("Failed to load server config: %v", err)
+	}
+
+	// Start server
+	port := serverCfg.Port
+	if port == "" {
+		port = "3030"
+	}
+
+	appLogger.Info("Starting Firestore Clone server", map[string]interface{}{
+		"port":             port,
+		"tenant_isolation": authCfg.TenantIsolationEnabled,
+		"mongodb_uri":      maskMongoURI(authCfg.MongoDBURI),
+		"cors_enabled":     authCfg.CORSEnabled,
+		"rate_limit":       authCfg.RateLimitEnabled,
+	})
+
+	// Graceful shutdown setup
+	go func() {
+		if err := app.Listen(":" + port); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 
-	// Initialize MongoDB connection
+	// Wait for interrupt signal to gracefully shutdown
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+
+	appLogger.Info("Shutting down server...", map[string]interface{}{})
+
+	// Shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	mongoURI := os.Getenv("MONGODB_URI")
-	if mongoURI == "" {
-		mongoURI = "mongodb://localhost:27017"
-		appLogger.Warn("MONGODB_URI not set, using default: %s", mongoURI)
+	// Shutdown modules
+	firestoreModule.Stop()
+	container.Close()
+
+	// Shutdown server
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		appLogger.Error("Server forced to shutdown", map[string]interface{}{
+			"error": err.Error(),
+		})
 	}
 
-	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
+	appLogger.Info("Server exited", map[string]interface{}{})
+}
+
+// initMongoDB initializes MongoDB connection
+func initMongoDB(uri string) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	clientOptions := options.Client().ApplyURI(uri)
+	client, err := mongo.Connect(ctx, clientOptions)
 	if err != nil {
-		log.Fatalf("Failed to connect to MongoDB: %v", err)
-	}
-	defer func() {
-		if err := mongoClient.Disconnect(context.Background()); err != nil {
-			appLogger.Error("Failed to disconnect MongoDB: %v", err)
-		}
-	}()
-
-	// Verify MongoDB connection
-	if err := mongoClient.Ping(ctx, nil); err != nil {
-		log.Fatalf("Failed to ping MongoDB: %v", err)
-	}
-	appLogger.Info("MongoDB connection established successfully")
-
-	// Load auth configuration
-	authConfig, err := config.LoadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load auth configuration: %v", err)
+		return nil, fmt.Errorf("failed to connect to MongoDB: %w", err)
 	}
 
-	// Get MongoDB database
-	mongoDB := mongoClient.Database(authConfig.DatabaseName)
-
-	// Initialize Auth Module through container
-	if err := container.InitializeAuth(mongoDB, authConfig); err != nil {
-		log.Fatalf("Failed to initialize Auth module: %v", err)
+	// Ping the database
+	if err := client.Ping(ctx, nil); err != nil {
+		return nil, fmt.Errorf("failed to ping MongoDB: %w", err)
 	}
-	appLogger.Info("Auth module initialized successfully")
 
-	// Initialize Firestore Module through container
-	if err := container.InitializeFirestore(); err != nil {
-		log.Fatalf("Failed to initialize Firestore module: %v", err)
-	}
-	appLogger.Info("Firestore module initialized successfully")
+	return client, nil
+}
 
-	// Setup HTTP server (Fiber) with middleware
-	app := fiber.New(fiber.Config{
-		AppName:      "Firestore Clone API v1.0",
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-		ErrorHandler: func(c *fiber.Ctx, err error) error {
-			appLogger.Error("HTTP Error: %v", err)
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-				"error": "Internal Server Error",
-			})
-		},
-	})
-
-	// Add middleware
+// setupMiddleware configures global middleware
+func setupMiddleware(app *fiber.App, authCfg *authConfig.Config, firestoreCfg *firestoreConfig.FirestoreConfig) {
+	// Security middleware
+	app.Use(helmet.New())
 	app.Use(recover.New())
+
+	// CORS middleware (use FirestoreConfig for CORS if present, else fallback to authCfg)
+	corsCfg := firestoreCfg.CORS
+	// Solo permitir localhost:3000 para desarrollo local
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
-		AllowMethods: "GET,POST,HEAD,PUT,DELETE,PATCH,OPTIONS",
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowOrigins:     "http://localhost:3000",
+		AllowMethods:     corsCfg.AllowMethods,
+		AllowHeaders:     corsCfg.AllowHeaders,
+		AllowCredentials: corsCfg.AllowCredentials,
 	}))
 
-	// Add health check endpoint with container health status
-	app.Get("/health", func(c *fiber.Ctx) error {
-		healthCtx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
+	// Rate limiting middleware
+	if authCfg.RateLimitEnabled {
+		app.Use(limiter.New(limiter.Config{
+			Max:        authCfg.RateLimitRPS,
+			Expiration: 1 * time.Minute,
+			KeyGenerator: func(c *fiber.Ctx) string {
+				// Use tenant ID + IP for rate limiting
+				tenantID := c.Get("X-Organization-ID", "default")
+				return tenantID + ":" + c.IP()
+			},
+		}))
+	}
+}
+
+// healthCheck returns a health check handler
+func healthCheck(client *mongo.Client, tenantManager *database.TenantManager) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		ctx, cancel := context.WithTimeout(c.Context(), 5*time.Second)
 		defer cancel()
 
-		if err := container.HealthCheck(healthCtx); err != nil {
-			appLogger.Error("Health check failed: %v", err)
+		// Check MongoDB connection
+		if err := client.Ping(ctx, nil); err != nil {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
-				"status":  "UNHEALTHY",
+				"status":  "unhealthy",
+				"mongodb": "disconnected",
 				"error":   err.Error(),
-				"message": "One or more services are unhealthy",
 			})
 		}
 
 		return c.JSON(fiber.Map{
-			"status":    "HEALTHY",
-			"message":   "Firestore Clone API is running",
-			"timestamp": time.Now().UTC(),
-			"modules": fiber.Map{
-				"auth":      "initialized",
-				"firestore": "initialized",
-			},
+			"status":             "healthy",
+			"timestamp":          time.Now().Unix(),
+			"mongodb":            "connected",
+			"tenant_connections": tenantManager.GetConnectionCount(),
 		})
+	}
+}
+
+// globalErrorHandler handles application errors
+func globalErrorHandler(c *fiber.Ctx, err error) error {
+	code := fiber.StatusInternalServerError
+	message := "Internal Server Error"
+
+	if e, ok := err.(*fiber.Error); ok {
+		code = e.Code
+		message = e.Message
+	}
+
+	return c.Status(code).JSON(fiber.Map{
+		"error":     true,
+		"message":   message,
+		"timestamp": time.Now().Unix(),
 	})
+}
 
-	// Register module routes
-	authModule := container.GetAuthModule()
-	firestoreModule := container.GetFirestoreModule()
-
-	if authModule != nil {
-		authModule.RegisterRoutes(app)
-		appLogger.Info("Auth routes registered")
+func maskMongoURI(uri string) string {
+	// Simple masking for logging
+	if len(uri) > 20 {
+		return uri[:10] + "***" + uri[len(uri)-7:]
 	}
-
-	if firestoreModule != nil {
-		firestoreModule.RegisterRoutes(app)
-		firestoreModule.StartRealtimeServices() // Start WebSocket services
-		appLogger.Info("Firestore routes and realtime services registered")
-	}
-
-	serverAddr := fmt.Sprintf("%s:%s", serverCfg.Host, serverCfg.Port)
-	appLogger.Info("🌟 All modules initialized. Starting HTTP server on %s", serverAddr)
-
-	// Start server in a goroutine for graceful shutdown
-	serverShutdown := make(chan error, 1)
-	go func() {
-		serverShutdown <- app.Listen(serverAddr)
-	}()
-
-	// Graceful shutdown handling
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case err := <-serverShutdown:
-		if err != nil {
-			appLogger.Error("Server failed to start: %v", err)
-			log.Fatalf("Server startup failed: %v", err)
-		}
-	case sig := <-quit:
-		appLogger.Info("Received shutdown signal: %v", sig)
-		fmt.Println("🛑 Shutting down server gracefully...")
-
-		// Shutdown the server with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		if err := app.ShutdownWithContext(shutdownCtx); err != nil {
-			appLogger.Error("Server forced to shutdown: %v", err)
-		}
-
-		appLogger.Info("HTTP server stopped")
-	}
-
-	fmt.Println("✅ Application stopped gracefully.")
+	return "***"
 }

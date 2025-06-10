@@ -132,7 +132,7 @@ func (a *AtomicOperations) AtomicArrayRemove(ctx context.Context, projectID, dat
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found")
+		return ErrDocumentNotFound
 	}
 
 	return nil
@@ -147,26 +147,22 @@ func (a *AtomicOperations) AtomicServerTimestamp(ctx context.Context, projectID,
 		"document_id":   documentID,
 	}
 
-	now := time.Now()
-
 	// Build the update operation
 	updateDoc := bson.M{
 		"$set": bson.M{
-			fmt.Sprintf("fields.%s", field): &model.FieldValue{
-				ValueType: model.FieldTypeTimestamp,
-				Value:     now,
-			},
-			"update_time": now,
+			fmt.Sprintf("fields.%s.value", field):      time.Now(),
+			fmt.Sprintf("fields.%s.value_type", field): model.FieldTypeTimestamp,
+			"update_time": time.Now(),
 		},
 	}
 	// Execute the atomic server timestamp
 	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
-		return fmt.Errorf("failed to perform atomic server timestamp: %w", err)
+		return fmt.Errorf("failed to set atomic server timestamp: %w", err)
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found")
+		return ErrDocumentNotFound
 	}
 
 	return nil
@@ -200,7 +196,7 @@ func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, database
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found")
+		return ErrDocumentNotFound
 	}
 
 	return nil
@@ -222,8 +218,9 @@ func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, data
 
 	updateDoc := bson.M{
 		"$set": bson.M{
-			fmt.Sprintf("fields.%s", field): value,
-			"update_time":                   time.Now(),
+			fmt.Sprintf("fields.%s.value", field):      value.Value,
+			fmt.Sprintf("fields.%s.value_type", field): value.ValueType,
+			"update_time": time.Now(),
 		},
 	}
 	// Execute the conditional set operation
@@ -233,7 +230,7 @@ func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, data
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found or field is not empty")
+		return fmt.Errorf("document not found or field already has value")
 	}
 
 	return nil
@@ -263,7 +260,7 @@ func (a *AtomicOperations) AtomicMaximum(ctx context.Context, projectID, databas
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found")
+		return ErrDocumentNotFound
 	}
 
 	return nil
@@ -293,7 +290,7 @@ func (a *AtomicOperations) AtomicMinimum(ctx context.Context, projectID, databas
 	}
 
 	if result.MatchedCount == 0 {
-		return fmt.Errorf("document not found")
+		return ErrDocumentNotFound
 	}
 
 	return nil

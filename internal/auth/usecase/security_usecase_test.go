@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // MockSecurityRulesEngine mocks the SecurityRulesEngine interface
@@ -60,7 +61,7 @@ func TestValidateRead_Allowed(t *testing.T) {
 	mockEngine := new(MockSecurityRulesEngine)
 	logger := &DummyLogger{}
 	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
-	user := &model.User{ID: "user1"}
+	user := &model.User{ID: primitive.NewObjectID()}
 	path := "projects/proj1/databases/db1/documents/doc1"
 	result := &repository.RuleEvaluationResult{Allowed: true, AllowedBy: "rule1"}
 	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(result, nil)
@@ -73,7 +74,7 @@ func TestValidateRead_Denied(t *testing.T) {
 	mockEngine := new(MockSecurityRulesEngine)
 	logger := &DummyLogger{}
 	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
-	user := &model.User{ID: "user1"}
+	user := &model.User{ID: primitive.NewObjectID()}
 	path := "projects/proj1/databases/db1/documents/doc1"
 	result := &repository.RuleEvaluationResult{Allowed: false, DeniedBy: "rule2", Reason: "forbidden"}
 	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(result, nil)
@@ -87,7 +88,7 @@ func TestValidateRead_EvaluateError(t *testing.T) {
 	mockEngine := new(MockSecurityRulesEngine)
 	logger := &DummyLogger{}
 	uc := firestoreusecase.NewSecurityUsecase(mockEngine, logger)
-	user := &model.User{ID: "user1"}
+	user := &model.User{ID: primitive.NewObjectID()}
 	path := "projects/proj1/databases/db1/documents/doc1"
 	mockEngine.On("EvaluateAccess", mock.Anything, repository.OperationRead, mock.AnythingOfType("*repository.SecurityContext")).Return(nil, errors.New("engine error"))
 	err := uc.ValidateRead(context.Background(), user, path)
