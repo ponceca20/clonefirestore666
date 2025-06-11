@@ -107,6 +107,9 @@ func main() {
 	// Auth routes (no tenant requirement for login/register)
 	authModule.RegisterRoutes(api.Group("/auth"))
 
+	// Organization routes (admin API, REST, CRUD)
+	firestoreModule.OrganizationHandler.RegisterRoutes(api)
+
 	// Firestore routes (tenant-aware)
 	firestoreModule.RegisterRoutes(api)
 

@@ -1,46 +1,58 @@
 package http
 
 import (
+	"context"
 	"strconv"
 
-	"firestore-clone/internal/firestore/adapter/persistence/mongodb"
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/shared/utils"
 
 	"github.com/gofiber/fiber/v2"
 )
 
+// OrganizationRepo defines the minimal interface needed for handler
+// This matches the methods used by OrganizationHandler
+// Place here for production and test use
+// (You can move this to a separate file if preferred)
+//
+//go:generate mockgen -destination=organization_repo_mock.go -package=http . OrganizationRepo
+type OrganizationRepo interface {
+	CreateOrganization(ctx context.Context, org *model.Organization) error
+	GetOrganization(ctx context.Context, id string) (*model.Organization, error)
+	ListOrganizations(ctx context.Context, pageSize, offset int) ([]*model.Organization, error)
+	ListOrganizationsByAdmin(ctx context.Context, adminEmail string) ([]*model.Organization, error)
+	UpdateOrganization(ctx context.Context, org *model.Organization) error
+	DeleteOrganization(ctx context.Context, id string) error
+}
+
 // OrganizationHandler handles organization management endpoints
 // Following Firestore's hierarchical API structure
 type OrganizationHandler struct {
-	organizationRepo *mongodb.OrganizationRepository
+	organizationRepo OrganizationRepo
 }
 
 // NewOrganizationHandler creates a new organization handler
-func NewOrganizationHandler(organizationRepo *mongodb.OrganizationRepository) *OrganizationHandler {
+func NewOrganizationHandler(organizationRepo OrganizationRepo) *OrganizationHandler {
 	return &OrganizationHandler{
 		organizationRepo: organizationRepo,
 	}
 }
 
 // RegisterRoutes registers organization management routes
-// Following Firestore API patterns
-func (h *OrganizationHandler) RegisterRoutes(app *fiber.App) {
-	// Organization management (admin API)
-	v1 := app.Group("/v1")
-
+// Accepts any fiber.Router (app or group) and registers under the given group
+func (h *OrganizationHandler) RegisterRoutes(router fiber.Router) {
 	// Organizations endpoints
-	orgs := v1.Group("/organizations")
-	orgs.Post("/", h.CreateOrganization)                  // POST /v1/organizations
-	orgs.Get("/", h.ListOrganizations)                    // GET /v1/organizations
-	orgs.Get("/:organizationId", h.GetOrganization)       // GET /v1/organizations/{organizationId}
-	orgs.Put("/:organizationId", h.UpdateOrganization)    // PUT /v1/organizations/{organizationId}
-	orgs.Delete("/:organizationId", h.DeleteOrganization) // DELETE /v1/organizations/{organizationId}
+	orgs := router.Group("/organizations")
+	orgs.Post("/", h.CreateOrganization)                  // POST /organizations
+	orgs.Get("/", h.ListOrganizations)                    // GET /organizations
+	orgs.Get("/:organizationId", h.GetOrganization)       // GET /organizations/{organizationId}
+	orgs.Put("/:organizationId", h.UpdateOrganization)    // PUT /organizations/{organizationId}
+	orgs.Delete("/:organizationId", h.DeleteOrganization) // DELETE /organizations/{organizationId}
 
 	// Organization-scoped endpoints (Firestore hierarchy)
 	orgScoped := orgs.Group("/:organizationId", TenantMiddleware())
-	orgScoped.Get("/projects", h.ListOrganizationProjects) // GET /v1/organizations/{organizationId}/projects
-	orgScoped.Get("/usage", h.GetOrganizationUsage)        // GET /v1/organizations/{organizationId}/usage
+	orgScoped.Get("/projects", h.ListOrganizationProjects) // GET /organizations/{organizationId}/projects
+	orgScoped.Get("/usage", h.GetOrganizationUsage)        // GET /organizations/{organizationId}/usage
 }
 
 // CreateOrganization creates a new organization

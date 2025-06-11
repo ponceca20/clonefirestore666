@@ -14,10 +14,10 @@ type Document struct {
 	ID primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
 
 	// Firestore hierarchy identifiers
-	ProjectID    string `json:"projectId" bson:"project_id"`
-	DatabaseID   string `json:"databaseId" bson:"database_id"`
-	CollectionID string `json:"collectionId" bson:"collection_id"`
-	DocumentID   string `json:"documentId" bson:"document_id"`
+	ProjectID    string `json:"projectID" bson:"project_id"`
+	DatabaseID   string `json:"databaseID" bson:"database_id"`
+	CollectionID string `json:"collectionID" bson:"collection_id"`
+	DocumentID   string `json:"documentID" bson:"document_id"`
 
 	// Document path and parent information
 	Path       string `json:"path" bson:"path"`              // Full path: projects/{PROJECT_ID}/databases/{DATABASE_ID}/documents/{COLLECTION_ID}/{DOCUMENT_ID}

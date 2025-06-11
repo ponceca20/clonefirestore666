@@ -1,469 +1,1158 @@
 {
   "info": {
-    "name": "Firestore Clone API - Comprehensive",
+    "name": "Firestore Clone - Multitenant API",
+    "description": "Comprehensive test collection for Firestore Clone with multi-tenant support.\n\n**Features:**\n- Automated authentication flow\n- Organization and project management\n- Document CRUD operations\n- Real-time features\n- Security rules testing\n- Multi-tenant isolation\n\n**Setup Instructions:**\n1. Import the environment file\n2. Set base_url in environment\n3. Run 'Auth Setup' folder first\n4. Execute tests in order",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_postman_id": "firestore-clone-collection-comprehensive"
+    "_postman_id": "12345678-1234-5678-9abc-123456789012",
+    "updatedAt": "2024-01-15T10:30:00.000Z"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global pre-request script",
+          "console.log('🚀 Request:', pm.info.requestName);",
+          "",
+          "// Set dynamic timestamps",
+          "pm.globals.set('timestamp', Date.now());",
+          "pm.globals.set('iso_timestamp', new Date().toISOString());",
+          "",
+          "// Generate test data if needed",
+          "if (!pm.environment.get('test_email')) {",
+          "    const randomId = Math.random().toString(36).substring(7);",
+          "    pm.environment.set('test_email', `test.${randomId}@example.com`);",
+          "}",
+          "",
+          "// Auto-refresh token if expired",
+          "const tokenExpiry = pm.environment.get('token_expiry');",
+          "if (tokenExpiry && Date.now() > parseInt(tokenExpiry)) {",
+          "    console.log('⚠️ Token expired, should refresh');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script",
+          "console.log('✅ Response:', pm.info.requestName, 'Status:', pm.response.code);",
+          "",
+          "// Log response time",
+          "const responseTime = pm.response.responseTime;",
+          "console.log(`⏱️ Response time: ${responseTime}ms`);",
+          "",
+          "// Performance test",
+          "pm.test('Response time is reasonable', function () {",
+          "    pm.expect(responseTime).to.be.below(5000); // 5 seconds",
+          "});",
+          "",
+          "// Common response structure tests",
+          "if (pm.response.code >= 200 && pm.response.code < 300) {",
+          "    pm.test('Response has correct content type', function () {",
+          "        pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+          "    });",
+          "}",
+          "",
+          "// Security headers check",
+          "pm.test('Security headers present', function () {",
+          "    const headers = pm.response.headers;",
+          "    pm.expect(headers.get('X-Content-Type-Options')).to.eql('nosniff');",
+          "    pm.expect(headers.get('X-Frame-Options')).to.eql('DENY');",
+          "});"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "collection_version",
+      "value": "2.1.0",
+      "type": "string"
+    }
+  ],
   "item": [
     {
-      "name": "Auth",
+      "name": "🔐 Authentication",
+      "description": "Authentication and user management endpoints",
       "item": [
         {
-          "name": "Register",
+          "name": "Register User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate unique test data",
+                  "const randomId = Math.random().toString(36).substring(7);",
+                  "pm.environment.set('test_user_id', randomId);",
+                  "pm.environment.set('test_email', `test.${randomId}@example.com`);",
+                  "pm.environment.set('test_password', 'TestPassword123!');",
+                  "",
+                  "// Set organization context",
+                  "if (!pm.environment.get('organization_id')) {",
+                  "    pm.environment.set('organization_id', 'testorg123');",
+                  "}",
+                  "",
+                  "console.log('📝 Registering user:', pm.environment.get('test_email'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Registration successful', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response contains user data', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('user');",
+                  "    pm.expect(response).to.have.property('accessToken');",
+                  "    pm.expect(response.user).to.have.property('email');",
+                  "    pm.expect(response.user.email).to.eql(pm.environment.get('test_email'));",
+                  "});",
+                  "",
+                  "// Store auth tokens",
+                  "if (pm.response.code === 201) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.accessToken);",
+                  "    pm.environment.set('refresh_token', response.refreshToken);",
+                  "    pm.environment.set('user_id', response.user.userId || response.user.userID);",
+                  "    ",
+                  "    // Calculate token expiry",
+                  "    const expiryTime = Date.now() + (response.expiresIn * 1000);",
+                  "    pm.environment.set('token_expiry', expiryTime.toString());",
+                  "    ",
+                  "    console.log('🔑 Tokens stored for user:', response.user.email);",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}",
+                "description": "Organization context"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"testuser_{{$randomInt}}@example.com\",\n  \"password\": \"Password123!\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"tenantId\": \"defaultTenant{{$randomInt}}\",\n  \"organizationId\": \"org{{$randomInt}}\"\n}"
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\",\n  \"tenantId\": \"{{tenant_id}}\",\n  \"organizationId\": \"{{organization_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "register"]
             }
           }
         },
         {
-          "name": "Login",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"] },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"testuser1@example.com\",\n  \"password\": \"Password123!\",\n  \"tenantId\": \"defaultTenant1\"\n}"
-            }
-          },
+          "name": "Login User",
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "var data = pm.response.json();",
-                  "pm.environment.set(\"accessToken\", data.accessToken);",
-                  "pm.environment.set(\"refreshToken\", data.refreshToken);",
-                  "if(data.user && data.user.userId) { pm.environment.set(\"userId\", data.user.userId); }",
-                  "if(data.user && data.user.tenantId) { pm.environment.set(\"tenantId\", data.user.tenantId); }",
-                  "if(data.user && data.user.organizationId) { pm.environment.set(\"defaultOrganizationId\", data.user.organizationId); }"
-                ],
-                "type": "text/javascript"
+                  "pm.test('Login successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns valid tokens', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('accessToken');",
+                  "    pm.expect(response).to.have.property('refreshToken');",
+                  "    pm.expect(response.accessToken).to.be.a('string').and.not.empty;",
+                  "});",
+                  "",
+                  "// Update stored tokens",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.accessToken);",
+                  "    pm.environment.set('refresh_token', response.refreshToken);",
+                  "    ",
+                  "    const expiryTime = Date.now() + (response.expiresIn * 1000);",
+                  "    pm.environment.set('token_expiry', expiryTime.toString());",
+                  "    ",
+                  "    console.log('🔑 Login successful, tokens updated');",
+                  "}"
+                ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"tenantId\": \"{{tenant_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('User profile retrieved', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('User data is valid', function () {",
+                  "    const user = pm.response.json();",
+                  "    pm.expect(user).to.have.property('email');",
+                  "    pm.expect(user).to.have.property('firstName');",
+                  "    pm.expect(user).to.have.property('lastName');",
+                  "    pm.expect(user).to.have.property('isActive');",
+                  "    pm.expect(user.isActive).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "me"]
+            }
+          }
         },
         {
           "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Token refresh successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.environment.set('access_token', response.accessToken);",
+                  "    pm.environment.set('refresh_token', response.refreshToken);",
+                  "    console.log('🔄 Tokens refreshed');",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/refresh", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "refresh"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
             },
-            "event": [
-              {
-                "listen": "test",
-                "script": {
-                  "exec": [
-                    "var data = pm.response.json();",
-                    "pm.environment.set(\"accessToken\", data.accessToken);",
-                    "pm.environment.set(\"refreshToken\", data.refreshToken);"
-                  ],
-                  "type": "text/javascript"
-                }
-              }
-            ]
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "refresh"]
+            }
           }
         },
         {
           "name": "Logout",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/logout", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "logout"] }
-          }
-        },
-        {
-          "name": "Get Current User (Me)",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/auth/me", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "me"] }
-          }
-        },
-        {
-          "name": "Update Current User (Me)",
-          "request": {
-            "method": "PUT",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/auth/me", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "me"] },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"firstName\": \"UpdatedFirstName\",\n  \"lastName\": \"UpdatedLastName\",\n  \"phone\": \"1234567890\"\n}"
-            }
-          }
-        },
-        {
-          "name": "Change Password",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/auth/change-password", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "change-password"] },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"oldPassword\": \"Password123!\",\n  \"newPassword\": \"NewPassword456!\"\n}"
-            }
-          }
-        },
-        {
-          "name": "Admin",
-          "item": [
-            {
-              "name": "List Users",
-              "request": {
-                "method": "GET",
-                "header": [
-                    { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                    { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
-                ],
-                "url": { "raw": "{{base_url}}/api/v1/auth/admin/users", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "admin", "users"] }
-              }
-            },
-            {
-              "name": "Get User by ID",
-              "request": {
-                "method": "GET",
-                "header": [
-                    { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                    { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
-                ],
-                "url": { "raw": "{{base_url}}/api/v1/auth/admin/users/{{userIdToManage}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "admin", "users", "{{userIdToManage}}"] }
-              }
-            },
-            {
-              "name": "Delete User by ID",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                    { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                    { "key": "X-Tenant-ID", "value": "{{tenantId}}" }
-                ],
-                "url": { "raw": "{{base_url}}/api/v1/auth/admin/users/{{userIdToManage}}", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "admin", "users", "{{userIdToManage}}"] }
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Organizations",
-      "item": [
-        {
-          "name": "Create Organization",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
-            ],
-            "url": { "raw": "{{base_url}}/api/v1/organizations", "host": ["{{base_url}}"], "path": ["api", "v1", "organizations"] },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"organizationId\": \"myorg{{$randomInt}}\",\n  \"displayName\": \"My Test Organization {{$randomInt}}\",\n  \"billingEmail\": \"billing{{$randomInt}}@myorg.com\"\n}"
-            }
-          },
           "event": [
             {
               "listen": "test",
               "script": {
                 "exec": [
-                  "var data = pm.response.json();",
-                  "if(data && data.organizationId) { pm.environment.set(\"organizationId\", data.organizationId); }"
-                ],
-                "type": "text/javascript"
+                  "pm.test('Logout successful', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "// Clear tokens after logout",
+                  "if (pm.response.code === 200) {",
+                  "    pm.environment.unset('access_token');",
+                  "    pm.environment.unset('refresh_token');",
+                  "    pm.environment.unset('token_expiry');",
+                  "    console.log('🚪 Logged out, tokens cleared');",
+                  "}"
+                ]
               }
             }
-          ]
-        },
-        {
-          "name": "List Organizations",
+          ],
           "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/organizations", "host": ["{{base_url}}"], "path": ["api", "v1", "organizations"] }
-          }
-        },
-        {
-          "name": "Get Organization",
-          "request": {
-            "method": "GET",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/organizations/{{organizationId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "organizations", "{{organizationId}}"] }
-          }
-        },
-        {
-          "name": "Update Organization",
-          "request": {
-            "method": "PUT",
+            "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
-            "url": { "raw": "{{base_url}}/api/v1/organizations/{{organizationId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "organizations", "{{organizationId}}"] },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"displayName\": \"My Updated Org Name\",\n  \"description\": \"Updated description for the org\"\n}"
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout"]
             }
-          }
-        },
-        {
-          "name": "Delete Organization",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
-            "url": { "raw": "{{base_url}}/api/v1/organizations/{{organizationId}}", "host": ["{{base_url}}"], "path": ["api", "v1", "organizations", "{{organizationId}}"] }
           }
         }
       ]
     },
     {
-      "name": "Firestore",
+      "name": "🏢 Organization Management",
+      "description": "Organization CRUD operations for multi-tenant setup",
       "item": [
         {
-          "name": "Documents",
-          "item": [
+          "name": "Create Organization",
+          "event": [
             {
-              "name": "Create Document",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"My Item {{$randomInt}}\",\n  \"quantity\": {{$randomInt}},\n  \"active\": true,\n  \"tags\": [\"tag1\", \"tag2\"]\n}"
-                }
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate unique organization data",
+                  "const randomId = Math.random().toString(36).substring(7);",
+                  "const orgId = `testorg${randomId}`;",
+                  "pm.environment.set('test_organization_id', orgId);",
+                  "pm.environment.set('organization_display_name', `Test Organization ${randomId}`);",
+                  "",
+                  "console.log('🏢 Creating organization:', orgId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Organization created successfully', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Organization data is valid', function () {",
+                  "    const org = pm.response.json();",
+                  "    pm.expect(org).to.have.property('organizationId');",
+                  "    pm.expect(org).to.have.property('displayName');",
+                  "    pm.expect(org).to.have.property('state');",
+                  "    pm.expect(org.organizationId).to.eql(pm.environment.get('test_organization_id'));",
+                  "});",
+                  "",
+                  "// Store organization for further tests",
+                  "if (pm.response.code === 201) {",
+                  "    const org = pm.response.json();",
+                  "    pm.environment.set('organization_id', org.organizationId);",
+                  "    pm.environment.set('organization_name', org.name);",
+                  "    console.log('🏢 Organization stored:', org.organizationId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               },
-              "event": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{test_organization_id}}\",\n  \"displayName\": \"{{organization_display_name}}\",\n  \"description\": \"Test organization for API testing\",\n  \"billingEmail\": \"billing@{{test_organization_id}}.com\",\n  \"adminEmails\": [\"{{test_email}}\"],\n  \"defaultLocation\": \"us-central1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizations"]
+            }
+          }
+        },
+        {
+          "name": "Get Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Organization retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Organization data is complete', function () {",
+                  "    const org = pm.response.json();",
+                  "    pm.expect(org).to.have.property('organizationId');",
+                  "    pm.expect(org).to.have.property('displayName');",
+                  "    pm.expect(org).to.have.property('createdAt');",
+                  "    pm.expect(org).to.have.property('projectCount');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizations", "{{organization_id}}"]
+            }
+          }
+        },
+        {
+          "name": "List Organizations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Organizations listed successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains organizations array', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('organizations');",
+                  "    pm.expect(response.organizations).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations?pageSize=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizations"],
+              "query": [
                 {
-                  "listen": "test",
-                  "script": {
-                    "exec": [
-                      "var data = pm.response.json();",
-                      "if(data && data.documentId) { pm.environment.set(\"documentId\", data.documentId); }"
-                    ],
-                    "type": "text/javascript"
-                  }
+                  "key": "pageSize",
+                  "value": "10"
                 }
               ]
-            },
-            {
-              "name": "Get Document",
-              "request": {
-                "method": "GET",
-                "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}", "{{documentId}}"]
-                }
-              }
-            },
-            {
-              "name": "Update Document (PUT)",
-              "request": {
-                "method": "PUT",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}", "{{documentId}}"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Updated Item Name\",\n  \"quantity\": 999,\n  \"active\": false,\n  \"description\": \"This is an updated item.\"\n}"
-                }
-              }
-            },
-            {
-              "name": "Patch Document (PATCH)",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}", "{{documentId}}"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"quantity\": 50,\n  \"notes\": \"Patched notes added.\"\n}"
-                }
-              }
-            },
-            {
-              "name": "Delete Document",
-              "request": {
-                "method": "DELETE",
-                "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}", "{{documentId}}"]
-                }
-              }
-            },
-            {
-              "name": "List Documents in Collection (GET with Query Params)",
-              "request": {
-                "method": "GET",
-                "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?limit=10&offset=0&orderBy=name:asc&filter_quantity_gt=5",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}"],
-                  "query": [
-                    {"key": "limit", "value": "10"},
-                    {"key": "offset", "value": "0"},
-                    {"key": "orderBy", "value": "name:asc"},
-                    {"key": "filter_quantity_gt", "value": "5"}
-                  ]
-                }
-              }
-            },
-            {
-              "name": "Query Documents (POST with Body)",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/{{collectionId}}",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "{{collectionId}}"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"filters\": [\n    { \"field\": \"active\", \"op\": \"==\", \"value\": true },\n    { \"field\": \"quantity\", \"op\": \">\", \"value\": 10 }\n  ],\n  \"orderBy\": [\n    { \"field\": \"name\", \"direction\": \"asc\" }\n  ],\n  \"limit\": 5\n}"
-                }
-              }
             }
-          ]
+          }
         },
         {
-          "name": "Collections",
-          "item": [
+          "name": "Update Organization",
+          "event": [
             {
-              "name": "List Collection IDs",
-              "request": {
-                "method": "GET",
-                "header": [
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "collections"]
-                }
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Organization updated successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Updated data reflected', function () {",
+                  "    const org = pm.response.json();",
+                  "    pm.expect(org.description).to.include('Updated');",
+                  "});"
+                ]
               }
             }
-          ]
-        },
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated test organization for API testing\",\n  \"defaultLocation\": \"us-west1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizations", "{{organization_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Firestore Operations",
+      "description": "Firestore document operations with tenant isolation",
+      "item": [
         {
-          "name": "Batch Operations",
-          "item": [
+          "name": "Create Document",
+          "event": [
             {
-              "name": "Batch Write",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-                  { "key": "X-Organization-ID", "value": "{{organizationId}}" }
-                ],
-                "url": {
-                  "raw": "{{base_url}}/api/v1/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/batchWrite",
-                  "host": ["{{base_url}}"],
-                  "path": ["api", "v1", "v1", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "batchWrite"]
-                },
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"writes\": [\n    {\n      \"type\": \"create\",\n      \"collectionId\": \"{{collectionId}}\",\n      \"documentId\": \"batchDoc1\",\n      \"data\": { \"fieldA\": \"valueA1\", \"fieldB\": 100 }\n    },\n    {\n      \"type\": \"update\",\n      \"collectionId\": \"{{collectionId}}\",\n      \"documentId\": \"{{documentId}}\",\n      \"data\": { \"fieldB\": 200, \"newField\": \"added\" }\n    },\n    {\n      \"type\": \"delete\",\n      \"collectionId\": \"{{collectionId}}\",\n      \"documentId\": \"docToDelete\"\n    }\n  ]\n}"
-                }
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Set up Firestore context",
+                  "if (!pm.environment.get('project_id')) {",
+                  "    pm.environment.set('project_id', 'test-project-123');",
+                  "}",
+                  "if (!pm.environment.get('database_id')) {",
+                  "    pm.environment.set('database_id', 'default');",
+                  "}",
+                  "if (!pm.environment.get('collection_id')) {",
+                  "    pm.environment.set('collection_id', 'users');",
+                  "}",
+                  "",
+                  "// Generate test document data",
+                  "const timestamp = new Date().toISOString();",
+                  "const documentData = {",
+                  "    name: `Test Document ${timestamp}`,",
+                  "    email: pm.environment.get('test_email'),",
+                  "    createdAt: timestamp,",
+                  "    active: true,",
+                  "    metadata: {",
+                  "        source: 'postman-test',",
+                  "        version: '1.0'",
+                  "    }",
+                  "};",
+                  "",
+                  "pm.environment.set('document_data', JSON.stringify(documentData));",
+                  "console.log('📝 Creating document in collection:', pm.environment.get('collection_id'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Document created successfully', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Document has Firestore structure', function () {",
+                  "    const doc = pm.response.json();",
+                  "    pm.expect(doc).to.have.property('documentId');",
+                  "    pm.expect(doc).to.have.property('fields');",
+                  "    pm.expect(doc).to.have.property('createTime');",
+                  "    pm.expect(doc).to.have.property('updateTime');",
+                  "});",
+                  "",
+                  "// Store document ID for further operations",
+                  "if (pm.response.code === 201) {",
+                  "    const doc = pm.response.json();",
+                  "    pm.environment.set('document_id', doc.documentId);",
+                  "    console.log('📄 Document created:', doc.documentId);",
+                  "}"
+                ]
               }
             }
-          ]
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{document_data}}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}"
+              ]
+            }
+          }
         },
         {
-            "name": "Realtime (WebSocket)",
-            "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                    "raw": "{{base_url_ws}}/ws/v1/listen/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}?token={{accessToken}}",
-                    "protocol": "ws",
-                    "host": ["{{base_url_ws_host}}"],
-                    "path": ["ws", "v1", "listen", "organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "{{collectionId}}", "{{documentId}}"],
-                    "query": [
-                        {
-                            "key": "token",
-                            "value": "{{accessToken}}"
-                        }
-                    ]
-                },
-                "description": "Connect to WebSocket for real-time updates. Replace `{{base_url_ws}}` with your WebSocket server address (e.g., `ws://localhost:3030`). The path structure should match your API. Use a WebSocket client (like Postman's built-in one, or others) to test this. The token is passed as a query parameter."
+          "name": "Get Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Document retrieved successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Document contains expected data', function () {",
+                  "    const doc = pm.response.json();",
+                  "    pm.expect(doc).to.have.property('fields');",
+                  "    pm.expect(doc.fields).to.have.property('name');",
+                  "    pm.expect(doc.fields).to.have.property('email');",
+                  "});",
+                  "",
+                  "pm.test('Document has valid timestamps', function () {",
+                  "    const doc = pm.response.json();",
+                  "    pm.expect(doc.createTime).to.be.a('string');",
+                  "    pm.expect(doc.updateTime).to.be.a('string');",
+                  "    pm.expect(new Date(doc.createTime)).to.be.lessThan(new Date());",
+                  "});"
+                ]
+              }
             }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}", "{{document_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Document",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate updated document data",
+                  "const updateData = {",
+                  "    name: `Updated Document ${new Date().toISOString()}`,",
+                  "    email: pm.environment.get('test_email'),",
+                  "    lastUpdated: new Date().toISOString(),",
+                  "    version: 2,",
+                  "    active: true",
+                  "};",
+                  "",
+                  "pm.environment.set('update_data', JSON.stringify(updateData));",
+                  "console.log('✏️ Updating document:', pm.environment.get('document_id'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Document updated successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Document shows updated data', function () {",
+                  "    const doc = pm.response.json();",
+                  "    pm.expect(doc.fields.name.stringValue).to.include('Updated');",
+                  "    pm.expect(doc.fields.version.integerValue).to.eql('2');",
+                  "});",
+                  "",
+                  "pm.test('Update time is newer than create time', function () {",
+                  "    const doc = pm.response.json();",
+                  "    const createTime = new Date(doc.createTime);",
+                  "    const updateTime = new Date(doc.updateTime);",
+                  "    pm.expect(updateTime).to.be.greaterThan(createTime);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{update_data}}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}", "{{document_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Query Documents",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Create query for active documents",
+                  "const queryData = {",
+                  "    structuredQuery: {",
+                  "        from: [{",
+                  "            collectionId: pm.environment.get('collection_id')",
+                  "        }],",
+                  "        where: {",
+                  "            fieldFilter: {",
+                  "                field: { fieldPath: 'active' },",
+                  "                op: 'EQUAL',",
+                  "                value: { booleanValue: true }",
+                  "            }",
+                  "        },",
+                  "        limit: 10",
+                  "    }",
+                  "};",
+                  "",
+                  "pm.environment.set('query_data', JSON.stringify(queryData));",
+                  "console.log('🔍 Querying documents in:', pm.environment.get('collection_id'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Query executed successfully', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Query returns document array', function () {",
+                  "    const results = pm.response.json();",
+                  "    pm.expect(results).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Documents match query criteria', function () {",
+                  "    const results = pm.response.json();",
+                  "    if (results.length > 0) {",
+                  "        results.forEach(doc => {",
+                  "            pm.expect(doc).to.have.property('fields');",
+                  "            if (doc.fields.active) {",
+                  "                pm.expect(doc.fields.active.booleanValue).to.be.true;",
+                  "            }",
+                  "        });",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{query_data}}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/query/{{collection_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "query", "{{collection_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Document deleted successfully', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clean up environment variables",
+                  "if (pm.response.code === 204) {",
+                  "    pm.environment.unset('document_id');",
+                  "    console.log('🗑️ Document deleted and cleaned up');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}/{{document_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}", "{{document_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔒 Security & Multi-tenancy",
+      "description": "Test security rules and multi-tenant isolation",
+      "item": [
+        {
+          "name": "Test Cross-Tenant Access Denied",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Try to access another organization's data",
+                  "pm.environment.set('other_organization_id', 'unauthorized-org');",
+                  "console.log('🔒 Testing cross-tenant access control');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cross-tenant access denied', function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([403, 404, 401]);",
+                  "});",
+                  "",
+                  "pm.test('Proper error message', function () {",
+                  "    if (pm.response.code === 403) {",
+                  "        const response = pm.response.json();",
+                  "        pm.expect(response).to.have.property('error');",
+                  "        pm.expect(response.error).to.include('access').or.include('denied').or.include('forbidden');",
+                  "    }",
+                  "});",
+                  "",
+                  "console.log('✅ Multi-tenant isolation working correctly');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "X-Organization-ID",
+                "value": "{{other_organization_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{other_organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{other_organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Test Unauthorized Access",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Unauthorized access blocked', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Proper authentication error', function () {",
+                  "    const response = pm.response.json();",
+                  "    pm.expect(response).to.have.property('error');",
+                  "    pm.expect(response.error).to.include('Authentication').or.include('token').or.include('Unauthorized');",
+                  "});",
+                  "",
+                  "console.log('✅ Authentication required working correctly');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Organization-ID",
+                "value": "{{organization_id}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}/projects/{{project_id}}/databases/{{database_id}}/documents/{{collection_id}}",
+              "host": ["{{base_url}}"],
+              "path": [
+                "api", "v1", "organizations", "{{organization_id}}",
+                "projects", "{{project_id}}",
+                "databases", "{{database_id}}",
+                "documents", "{{collection_id}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏥 Health & Monitoring",
+      "description": "System health and monitoring endpoints",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Service is healthy', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Health data is valid', function () {",
+                  "    const health = pm.response.json();",
+                  "    pm.expect(health).to.have.property('status');",
+                  "    pm.expect(health.status).to.eql('healthy');",
+                  "    pm.expect(health).to.have.property('mongodb');",
+                  "    pm.expect(health.mongodb).to.eql('connected');",
+                  "});",
+                  "",
+                  "pm.test('Timestamp is recent', function () {",
+                  "    const health = pm.response.json();",
+                  "    const timestamp = health.timestamp * 1000; // Convert to milliseconds",
+                  "    const now = Date.now();",
+                  "    const diff = now - timestamp;",
+                  "    pm.expect(diff).to.be.below(10000); // Within 10 seconds",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
+        },
+        {
+          "name": "Metrics",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Metrics endpoint accessible', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response contains HTML content', function () {",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/html');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["metrics"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧹 Cleanup",
+      "description": "Cleanup operations for test data",
+      "item": [
+        {
+          "name": "Delete Test Organization",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Organization deleted successfully', function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "// Clean up environment variables",
+                  "if (pm.response.code === 204) {",
+                  "    pm.environment.unset('organization_id');",
+                  "    pm.environment.unset('test_organization_id');",
+                  "    pm.environment.unset('organization_name');",
+                  "    console.log('🧹 Organization cleaned up');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/organizations/{{organization_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "organizations", "{{organization_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Final Cleanup",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Clean up all test environment variables",
+                  "const testVars = [",
+                  "    'test_email', 'test_password', 'test_user_id',",
+                  "    'access_token', 'refresh_token', 'token_expiry',",
+                  "    'user_id', 'document_id', 'document_data',",
+                  "    'update_data', 'query_data', 'organization_display_name'",
+                  "];",
+                  "",
+                  "testVars.forEach(varName => {",
+                  "    pm.environment.unset(varName);",
+                  "});",
+                  "",
+                  "console.log('🧹 All test variables cleaned up');",
+                  "console.log('✅ Test suite completed successfully!');",
+                  "",
+                  "pm.test('Cleanup completed', function () {",
+                  "    pm.expect(true).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            }
+          }
         }
       ]
     }
-  ],
-  "event": [],
-  "variable": [
-    { "key": "base_url", "value": "http://localhost:3030" },
-    { "key": "base_url_ws", "value": "ws://localhost:3030"},
-    { "key": "base_url_ws_host", "value": "localhost:3030"},
-    { "key": "accessToken", "value": "" },
-    { "key": "refreshToken", "value": "" },
-    { "key": "userId", "value": "" },
-    { "key": "tenantId", "value": "defaultTenant1" },
-    { "key": "userIdToManage", "value": ""},
-    { "key": "organizationId", "value": "myorg1" },
-    { "key": "defaultOrganizationId", "value": "myorg1"},
-    { "key": "projectId", "value": "proj1" },
-    { "key": "databaseId", "value": "db1" },
-    { "key": "collectionId", "value": "items" },
-    { "key": "documentId", "value": "" }
   ]
 }

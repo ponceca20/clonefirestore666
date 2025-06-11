@@ -11,8 +11,8 @@ import (
 // projects/{PROJECT_ID}/databases/{DATABASE_ID}
 type Database struct {
 	ID         primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	ProjectID  string             `json:"projectId" bson:"project_id"`
-	DatabaseID string             `json:"databaseId" bson:"database_id"`
+	ProjectID  string             `json:"projectID" bson:"project_id"`
+	DatabaseID string             `json:"databaseID" bson:"database_id"`
 
 	// Database configuration
 	DisplayName     string          `json:"displayName,omitempty" bson:"display_name,omitempty"`

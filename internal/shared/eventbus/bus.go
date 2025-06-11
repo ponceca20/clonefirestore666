@@ -64,6 +64,9 @@ func NewEventBus(log logger.Logger) *EventBus {
 
 // NewEventBusWithConfig creates a new event bus with custom configuration
 func NewEventBusWithConfig(log logger.Logger, config BusConfig) *EventBus {
+	if log == nil {
+		log = &noopLogger{}
+	}
 	return &EventBus{
 		handlers: make(map[string][]Handler),
 		logger:   log,

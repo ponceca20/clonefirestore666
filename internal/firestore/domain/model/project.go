@@ -12,7 +12,7 @@ import (
 // Following Firestore's exact hierarchy: organizations/{ORG_ID}/projects/{PROJECT_ID}/databases/{DATABASE_ID}/documents/...
 type Project struct {
 	ID          primitive.ObjectID `json:"id" bson:"_id,omitempty"`
-	ProjectID   string             `json:"projectId" bson:"project_id"`
+	ProjectID   string             `json:"projectID" bson:"project_id"`
 	DisplayName string             `json:"displayName" bson:"display_name"`
 
 	// Organization relationship (NEW - Following Firestore hierarchy)

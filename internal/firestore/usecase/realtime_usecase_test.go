@@ -2,44 +2,20 @@ package usecase_test
 
 import (
 	"context"
-	"firestore-clone/internal/firestore/domain/model"
-	"firestore-clone/internal/firestore/usecase"
-	"firestore-clone/internal/shared/logger"
 	"sync"
 	"testing"
 	"time"
+
+	"firestore-clone/internal/firestore/domain/model"
+	. "firestore-clone/internal/firestore/usecase"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockLogger is a simple logger for testing.
-type mockLogger struct{}
-
-func (m *mockLogger) Debug(args ...interface{})                 {}
-func (m *mockLogger) Info(args ...interface{})                  {}
-func (m *mockLogger) Warn(args ...interface{})                  {}
-func (m *mockLogger) Error(args ...interface{})                 {}
-func (m *mockLogger) Fatal(args ...interface{})                 {}
-func (m *mockLogger) Debugf(format string, args ...interface{}) {}
-func (m *mockLogger) Infof(format string, args ...interface{})  {}
-func (m *mockLogger) Warnf(format string, args ...interface{})  {}
-func (m *mockLogger) Errorf(format string, args ...interface{}) {}
-func (m *mockLogger) Fatalf(format string, args ...interface{}) {}
-func (m *mockLogger) WithFields(fields map[string]interface{}) logger.Logger {
-	return m
-}
-
-func (m *mockLogger) WithContext(ctx context.Context) logger.Logger {
-	return m
-}
-
-func (m *mockLogger) WithComponent(component string) logger.Logger {
-	return m
-}
-
-func newTestRealtimeUsecase(t *testing.T) usecase.RealtimeUsecase {
-	return usecase.NewRealtimeUsecase(&mockLogger{})
+// Usa el mock centralizado de logger y el helper newTestFirestoreUsecase si aplica.
+func newTestRealtimeUsecase(t *testing.T) RealtimeUsecase {
+	return NewRealtimeUsecase(&MockLogger{})
 }
 
 func TestRealtimeUsecase_SubscribeUnsubscribe(t *testing.T) {

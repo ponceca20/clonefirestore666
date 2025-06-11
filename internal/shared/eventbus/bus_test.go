@@ -40,17 +40,25 @@ func TestEventBus_SubscribePublish(t *testing.T) {
 }
 
 func TestEventBus_AsyncPublish(t *testing.T) {
-	bus := NewEventBusWithConfig(&noopLogger{}, BusConfig{AsyncProcessing: true})
-	ch := make(chan struct{})
+	config := DefaultBusConfig()
+	config.AsyncProcessing = true
+	bus := NewEventBusWithConfig(nil, config)
+
+	// Use buffered channel to avoid blocking
+	ch := make(chan struct{}, 1)
 	bus.Subscribe("async", func(ctx context.Context, event Event) error {
 		ch <- struct{}{}
 		return nil
 	})
-	_ = bus.Publish(context.Background(), &DummyEvent{typeStr: "async", timestamp: time.Now()})
+
+	err := bus.Publish(context.Background(), &DummyEvent{typeStr: "async", timestamp: time.Now()})
+	assert.NoError(t, err)
+
+	// Wait for async event with timeout
 	select {
 	case <-ch:
-		// ok
-	case <-time.After(time.Second):
+		// Success - event was processed
+	case <-time.After(500 * time.Millisecond):
 		t.Fatal("timeout waiting for async event")
 	}
 }
