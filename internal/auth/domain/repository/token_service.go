@@ -8,7 +8,7 @@ import (
 
 // TokenService defines the interface for token operations
 type TokenService interface {
-	GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string) (string, error)
+	GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string, roles []string) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*Claims, error)
 	GenerateRefreshToken(ctx context.Context, userID, email, tenantID string) (string, error)
 	ValidateRefreshToken(ctx context.Context, tokenString string) (*Claims, error)

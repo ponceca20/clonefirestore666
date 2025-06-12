@@ -1,0 +1,1493 @@
+{
+	"info": {
+		"_postman_id": "b2c3d4e5-f6g7-8901-2345-678901bcdefg",
+		"name": "Firestore Clone Documents API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Collection for managing documents, collections, indexes, batch operations, transactions and atomic operations in the Firestore Clone API. Routes follow the pattern: /api/v1/organizations/{organizationId}/projects/{projectId}/databases/{databaseId}/..."
+	},
+	"item": [
+		{
+			"name": "Documents",
+			"item": [
+				{
+					"name": "Create Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    pm.test(\"Response has documentID\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('documentID');",
+									"        pm.expect(jsonData.documentID).to.be.a('string');",
+									"        pm.expect(jsonData.documentID).to.not.be.empty;",
+									"        ",
+									"        // Set documentId for use in other requests",
+									"        pm.environment.set(\"currentDocumentId\", jsonData.documentID);",
+									"        console.log(\"documentID set to: \" + jsonData.documentID);",
+									"    });",
+									"    ",
+									"    pm.test(\"Response has required fields\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('collectionID');",
+									"        pm.expect(jsonData).to.have.property('projectID');",
+									"        pm.expect(jsonData).to.have.property('databaseID');",
+									"        pm.expect(jsonData).to.have.property('createdAt');",
+									"        pm.expect(jsonData).to.have.property('updatedAt');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate a unique document ID for this request",
+									"pm.environment.set(\"newDocumentId\", \"doc-\" + Date.now());"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Document\",\n  \"description\": \"A test document created via Postman\",\n  \"category\": \"test\",\n  \"tags\": [\"postman\", \"test\", \"firestore\"],\n  \"metadata\": {\n    \"author\": \"Postman Test\",\n    \"version\": \"1.0\",\n    \"public\": true\n  },\n  \"content\": {\n    \"text\": \"This is the document content\",\n    \"format\": \"plain\"\n  },\n  \"priority\": 1,\n  \"active\": true,\n  \"createdBy\": \"postman-user\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?documentId={{newDocumentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}"
+							],
+							"query": [
+								{
+									"key": "documentId",
+									"value": "{{newDocumentId}}",
+									"description": "Optional document ID"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Response has document data\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('documentID');",
+									"        pm.expect(jsonData).to.have.property('collectionID');",
+									"        pm.expect(jsonData).to.have.property('data');",
+									"        pm.expect(jsonData.data).to.be.an('object');",
+									"    });",
+									"    ",
+									"    pm.test(\"Document has expected fields\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData.data).to.have.property('name');",
+									"        pm.expect(jsonData.data).to.have.property('category');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Document was updated\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('documentID');",
+									"        pm.expect(jsonData).to.have.property('updatedAt');",
+									"        pm.expect(jsonData.data).to.have.property('description');",
+									"        pm.expect(jsonData.data.description).to.include('UPDATED');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"description\": \"UPDATED: Document modified via Postman\",\n  \"category\": \"test-updated\",\n  \"priority\": 2,\n  \"lastModified\": \"{{$timestamp}}\",\n  \"metadata\": {\n    \"author\": \"Postman Test\",\n    \"version\": \"1.1\",\n    \"public\": false,\n    \"updated\": true\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}?updateMask=description,category,priority,lastModified,metadata",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}"
+							],
+							"query": [
+								{
+									"key": "updateMask",
+									"value": "description,category,priority,lastModified,metadata",
+									"description": "Fields to update"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Documents",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Response has documents array\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('documents');",
+									"        pm.expect(jsonData.documents).to.be.an('array');",
+									"        pm.expect(jsonData).to.have.property('count');",
+									"        pm.expect(jsonData.count).to.be.a('number');",
+									"    });",
+									"    ",
+									"    pm.test(\"Documents have required structure\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        if (jsonData.documents.length > 0) {",
+									"            var firstDoc = jsonData.documents[0];",
+									"            pm.expect(firstDoc).to.have.property('documentID');",
+									"            pm.expect(firstDoc).to.have.property('collectionID');",
+									"        }",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?pageSize=10&orderBy=createdAt&showMissing=false",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}"
+							],
+							"query": [
+								{
+									"key": "pageSize",
+									"value": "10",
+									"description": "Number of documents to return"
+								},
+								{
+									"key": "orderBy",
+									"value": "createdAt",
+									"description": "Field to order by"
+								},
+								{
+									"key": "showMissing",
+									"value": "false",
+									"description": "Include missing documents"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Query Documents",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Query response has documents\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('documents');",
+									"        pm.expect(jsonData.documents).to.be.an('array');",
+									"        pm.expect(jsonData).to.have.property('count');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"structuredQuery\": {\n    \"from\": [{\n      \"collectionId\": \"{{collectionId}}\"\n    }],\n    \"where\": {\n      \"fieldFilter\": {\n        \"field\": {\n          \"fieldPath\": \"category\"\n        },\n        \"op\": \"EQUAL\",\n        \"value\": {\n          \"stringValue\": \"test\"\n        }\n      }\n    },\n    \"orderBy\": [{\n      \"field\": {\n        \"fieldPath\": \"createdAt\"\n      },\n      \"direction\": \"DESCENDING\"\n    }],\n    \"limit\": 10\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/{{collectionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"query",
+								"{{collectionId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Document",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});",
+									"",
+									"pm.test(\"Response body is empty\", function () {",
+									"    pm.expect(pm.response.text()).to.be.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Document CRUD operations"
+		},
+		{
+			"name": "Collections",
+			"item": [
+				{
+					"name": "Create Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    pm.test(\"Collection was created\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('collectionID');",
+									"        pm.expect(jsonData).to.have.property('projectID');",
+									"        pm.expect(jsonData).to.have.property('databaseID');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"collectionId\": \"{{collectionId}}\",\n  \"displayName\": \"Test Collection\",\n  \"metadata\": {\n    \"description\": \"A test collection created via Postman\",\n    \"category\": \"test\",\n    \"created_by\": \"postman\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Collection data is returned\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('collectionID');",
+									"        pm.expect(jsonData.collectionID).to.equal(pm.environment.get('collectionId'));",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Collections",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Collections list is returned\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('collections');",
+									"        pm.expect(jsonData.collections).to.be.an('array');",
+									"        pm.expect(jsonData).to.have.property('count');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections?pageSize=20",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections"
+							],
+							"query": [
+								{
+									"key": "pageSize",
+									"value": "20",
+									"description": "Number of collections to return"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Collection was updated\", function () {",
+									"    pm.expect(pm.response.code).to.equal(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"displayName\": \"Updated Test Collection\",\n  \"metadata\": {\n    \"description\": \"Updated description via Postman\",\n    \"category\": \"test-updated\",\n    \"modified_by\": \"postman\",\n    \"last_modified\": \"{{$timestamp}}\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Subcollections",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Subcollections response structure\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('subcollections');",
+									"        pm.expect(jsonData.subcollections).to.be.an('array');",
+									"        pm.expect(jsonData).to.have.property('count');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{subDocumentId}}/subcollections",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{subDocumentId}}",
+								"subcollections"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Collection",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});",
+									"",
+									"pm.test(\"Response body is empty\", function () {",
+									"    pm.expect(pm.response.text()).to.be.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Collection management operations"
+		},
+		{
+			"name": "Indexes",
+			"item": [
+				{
+					"name": "Create Index",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"if (pm.response.code === 201) {",
+									"    pm.test(\"Index was created\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('name');",
+									"        pm.environment.set(\"createdIndexName\", jsonData.name);",
+									"        console.log(\"Index created: \" + jsonData.name);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"index\": {\n    \"collection\": \"{{collectionId}}\",\n    \"fields\": [\n      {\n        \"fieldPath\": \"category\",\n        \"order\": \"ASCENDING\"\n      },\n      {\n        \"fieldPath\": \"priority\",\n        \"order\": \"DESCENDING\"\n      }\n    ],\n    \"queryScope\": \"COLLECTION\",\n    \"state\": \"READY\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}",
+								"indexes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "List Indexes",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Indexes list is returned\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('indexes');",
+									"        pm.expect(jsonData.indexes).to.be.an('array');",
+									"        pm.expect(jsonData).to.have.property('count');",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}",
+								"indexes"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Index",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 204\", function () {",
+									"    pm.response.to.have.status(204);",
+									"});",
+									"",
+									"pm.test(\"Response body is empty\", function () {",
+									"    pm.expect(pm.response.text()).to.be.empty;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes/{{indexId}}",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"collections",
+								"{{collectionId}}",
+								"indexes",
+								"{{indexId}}"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Index management operations"
+		},
+		{
+			"name": "Batch Operations",
+			"item": [
+				{
+					"name": "Batch Write",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Batch write response\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('writeResults');",
+									"        pm.expect(jsonData.writeResults).to.be.an('array');",
+									"        pm.expect(jsonData.writeResults.length).to.be.greaterThan(0);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate unique IDs for batch operations",
+									"pm.environment.set(\"batchDoc1Id\", \"batch-doc-1-\" + Date.now());",
+									"pm.environment.set(\"batchDoc2Id\", \"batch-doc-2-\" + Date.now());",
+									"pm.environment.set(\"batchDoc3Id\", \"batch-doc-3-\" + Date.now());"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"writes\": [\n    {\n      \"operation\": \"create\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{batchDoc1Id}}\",\n        \"fields\": {\n          \"name\": {\n            \"stringValue\": \"Batch Document 1\"\n          },\n          \"type\": {\n            \"stringValue\": \"batch\"\n          },\n          \"priority\": {\n            \"integerValue\": \"1\"\n          }\n        }\n      }\n    },\n    {\n      \"operation\": \"create\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{batchDoc2Id}}\",\n        \"fields\": {\n          \"name\": {\n            \"stringValue\": \"Batch Document 2\"\n          },\n          \"type\": {\n            \"stringValue\": \"batch\"\n          },\n          \"priority\": {\n            \"integerValue\": \"2\"\n          }\n        }\n      }\n    },\n    {\n      \"operation\": \"update\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}\",\n        \"fields\": {\n          \"batchUpdated\": {\n            \"booleanValue\": true\n          },\n          \"batchTimestamp\": {\n            \"timestampValue\": \"{{$isoTimestamp}}\"\n          }\n        }\n      },\n      \"updateMask\": {\n        \"fieldPaths\": [\"batchUpdated\", \"batchTimestamp\"]\n      }\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/batchWrite",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"batchWrite"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Batch operations for multiple document changes"
+		},
+		{
+			"name": "Transactions",
+			"item": [
+				{
+					"name": "Begin Transaction",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Transaction ID returned\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('transactionId');",
+									"        pm.expect(jsonData.transactionId).to.be.a('string');",
+									"        pm.expect(jsonData.transactionId).to.not.be.empty;",
+									"        ",
+									"        // Store transaction ID for commit",
+									"        pm.environment.set(\"currentTransactionId\", jsonData.transactionId);",
+									"        console.log(\"Transaction started: \" + jsonData.transactionId);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"options\": {\n    \"readOnly\": false,\n    \"readWrite\": {\n      \"retryTransaction\": \"\"\n    }\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/beginTransaction",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"beginTransaction"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Commit Transaction",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Transaction committed successfully\", function () {",
+									"    // Transaction commit should complete without error",
+									"    pm.expect(pm.response.code).to.equal(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"transactionId\": \"{{currentTransactionId}}\",\n  \"writes\": [\n    {\n      \"operation\": \"update\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}\",\n        \"fields\": {\n          \"transactionUpdated\": {\n            \"booleanValue\": true\n          },\n          \"transactionTimestamp\": {\n            \"timestampValue\": \"{{$isoTimestamp}}\"\n          }\n        }\n      }\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/commit",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"commit"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Transaction management operations"
+		},
+		{
+			"name": "Atomic Operations",
+			"item": [
+				{
+					"name": "Atomic Increment",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"if (pm.response.code === 200) {",
+									"    pm.test(\"Increment response has new value\", function () {",
+									"        var jsonData = pm.response.json();",
+									"        pm.expect(jsonData).to.have.property('newValue');",
+									"        pm.expect(jsonData.newValue).to.be.a('number');",
+									"        console.log(\"New counter value: \" + jsonData.newValue);",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"field\": \"counter\",\n  \"incrementBy\": 5\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/increment",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}",
+								"increment"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atomic Array Union",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Array union completed\", function () {",
+									"    pm.expect(pm.response.code).to.equal(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"field\": \"tags\",\n  \"elements\": [\"atomic\", \"union\", \"postman-test\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayUnion",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}",
+								"arrayUnion"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atomic Array Remove",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Array remove completed\", function () {",
+									"    pm.expect(pm.response.code).to.equal(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"field\": \"tags\",\n  \"elements\": [\"postman-test\"]\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayRemove",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}",
+								"arrayRemove"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Atomic Server Timestamp",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Server timestamp set\", function () {",
+									"    pm.expect(pm.response.code).to.equal(200);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{authToken}}",
+								"type": "text"
+							},
+							{
+								"key": "X-Organization-ID",
+								"value": "{{organizationId}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"field\": \"lastServerUpdate\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/serverTimestamp",
+							"host": ["{{baseUrl}}"],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectId}}",
+								"databases",
+								"{{databaseId}}",
+								"documents",
+								"{{collectionId}}",
+								"{{documentId}}",
+								"serverTimestamp"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"description": "Atomic field operations"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "9f0c5f4a-3b7c-4a1e-8f2a-1b3c5d7e9f0a",
+				"exec": [
+					"// Global pre-request script for Documents API",
+					"console.log('Preparing request for: ' + pm.info.requestName);",
+					"",
+					"// Ensure required environment variables are set",
+					"const requiredVars = ['baseUrl', 'organizationId', 'projectId', 'databaseId', 'collectionId'];",
+					"requiredVars.forEach(varName => {",
+					"    const value = pm.environment.get(varName);",
+					"    if (!value) {",
+					"        console.warn(`Warning: ${varName} is not set in environment`);",
+					"    }",
+					"});",
+					"",
+					"// Set default documentId if not already set",
+					"if (!pm.environment.get('documentId')) {",
+					"    pm.environment.set('documentId', 'item123');",
+					"    console.log('Set default documentId: item123');",
+					"}"
+				],
+				"type": "text/javascript"
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+				"exec": [
+					"// Global test script for Documents API",
+					"pm.test('Response time is acceptable', function () {",
+					"    pm.expect(pm.response.responseTime).to.be.below(5000);",
+					"});",
+					"",
+					"pm.test('Content-Type header is present', function () {",
+					"    if (pm.response.code !== 204) { // Skip for No Content responses",
+					"        pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+					"    }",
+					"});",
+					"",
+					"// Log response for debugging",
+					"console.log('Response status:', pm.response.code);",
+					"console.log('Response time:', pm.response.responseTime + 'ms');",
+					"if (pm.response.code >= 400) {",
+					"    console.log('Error response:', pm.response.text());",
+					"}"
+				],
+				"type": "text/javascript"
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "apiVersion",
+			"value": "v1",
+			"type": "string"
+		},
+		{
+			"key": "collectionName",
+			"value": "Documents API",
+			"type": "string"
+		}
+	]
+}

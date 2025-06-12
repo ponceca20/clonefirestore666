@@ -1,8 +1,6 @@
 package firestore
 
 import (
-	"fmt"
-
 	// Added imports
 	httpadapter "firestore-clone/internal/firestore/adapter/http"
 	mongodbpersistence "firestore-clone/internal/firestore/adapter/persistence/mongodb"
@@ -16,7 +14,6 @@ import (
 
 	"github.com/gofiber/fiber/v2" // For RegisterRoutes parameter
 	"go.mongodb.org/mongo-driver/mongo"
-	// "go.uber.org/zap" // Example logger, use passed logger
 )
 
 // FirestoreModule represents the core Firestore module with multi-tenant support.
@@ -44,14 +41,13 @@ func NewFirestoreModule(
 	mongoClient *mongo.Client, // MongoDB client for multi-tenant
 	masterDB *mongo.Database, // Master database for organization metadata
 ) (*FirestoreModule, error) {
-	fmt.Println("Initializing Firestore Module with Multi-Tenant Support...")
 	log.Info("Initializing Firestore Module with Multi-Tenant Support...")
 
-	// Load Firestore configuration
+	// Load Firestore configuration, fallback to defaults if environment variables are not set
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Error("Failed to load Firestore config", "error", err)
-		return nil, fmt.Errorf("failed to load firestore config: %w", err)
+		log.Warn("Failed to load Firestore config from environment, using defaults", "error", err)
+		cfg = config.DefaultFirestoreConfig()
 	}
 	log.Info("Firestore configuration loaded successfully.")
 
@@ -110,15 +106,88 @@ func NewFirestoreModule(
 	}, nil
 }
 
+// NewFirestoreModuleWithConfig creates and initializes a new Firestore module with provided configuration.
+// This constructor is useful for testing or when you want to provide custom configuration.
+func NewFirestoreModuleWithConfig(
+	authClient client.AuthClient,
+	log logger.Logger,
+	mongoClient *mongo.Client, // MongoDB client for multi-tenant
+	masterDB *mongo.Database, // Master database for organization metadata
+	cfg *config.FirestoreConfig, // Provided configuration
+) (*FirestoreModule, error) {
+	log.Info("Initializing Firestore Module with Multi-Tenant Support...")
+
+	// Use provided configuration
+	if cfg == nil {
+		cfg = config.DefaultFirestoreConfig()
+		log.Info("No configuration provided, using defaults.")
+	}
+	log.Info("Firestore configuration set successfully.")
+
+	// Initialize EventBus
+	eventBus := eventbus.NewEventBus(log)
+
+	// Initialize TenantManager for multi-tenant support
+	tenantConfig := &database.TenantConfig{
+		DatabasePrefix:     "firestore_org_",
+		MaxConnections:     100,
+		AutoCreateDatabase: true,
+	}
+	tenantManager := database.NewTenantManager(mongoClient, tenantConfig, log)
+	log.Info("TenantManager initialized successfully.")
+
+	// Initialize OrganizationRepository
+	orgRepo := mongodbpersistence.NewOrganizationRepository(mongoClient, masterDB, tenantManager, log)
+	log.Info("OrganizationRepository initialized successfully.")
+
+	// Initialize TenantAwareDocumentRepository
+	tenantAwareRepo := mongodbpersistence.NewTenantAwareDocumentRepository(mongoClient, tenantManager, eventBus, log)
+	log.Info("TenantAwareDocumentRepository initialized successfully.")
+
+	// Initialize query engine with MongoDB implementation
+	queryEngine := mongodbpersistence.NewMongoQueryEngine(masterDB)
+	log.Info("QueryEngine initialized successfully.")
+
+	// Initialize security rules engine
+	securityRulesEngine := mongodbpersistence.NewSecurityRulesEngine(masterDB, log)
+	log.Info("SecurityRulesEngine initialized successfully.")
+
+	// Initialize use cases
+	realtimeUC := usecase.NewRealtimeUsecase(log)
+	securityUC := usecase.NewSecurityUsecase(securityRulesEngine, log)
+
+	// Initialize FirestoreUsecase with tenant-aware repository
+	firestoreUC := usecase.NewFirestoreUsecase(tenantAwareRepo, securityRulesEngine, queryEngine, log)
+
+	// Initialize OrganizationHandler
+	orgHandler := httpadapter.NewOrganizationHandler(orgRepo)
+	log.Info("OrganizationHandler initialized successfully.")
+
+	return &FirestoreModule{
+		Config:              cfg,
+		AuthClient:          authClient,
+		Logger:              log,
+		TenantAwareRepo:     tenantAwareRepo,
+		QueryEngine:         queryEngine,
+		SecurityRules:       securityRulesEngine,
+		RealtimeUsecase:     realtimeUC,
+		SecurityUsecase:     securityUC,
+		FirestoreUsecase:    firestoreUC,
+		TenantManager:       tenantManager,
+		OrganizationRepo:    orgRepo,
+		OrganizationHandler: orgHandler,
+	}, nil
+}
+
 // RegisterRoutes registers the HTTP routes for the Firestore module.
 func (m *FirestoreModule) RegisterRoutes(router fiber.Router) {
-	// Register HTTP adapter for Firestore REST API
-	httpHandler := httpadapter.NewFirestoreHTTPHandler(m.FirestoreUsecase, m.SecurityUsecase, m.RealtimeUsecase, m.AuthClient, m.Logger, m.OrganizationHandler)
-	httpHandler.RegisterRoutes(router)
-
 	// Register WebSocket handler for real-time updates
 	wsHandler := httpadapter.NewWebSocketHandler(m.RealtimeUsecase, m.SecurityUsecase, m.AuthClient, m.Logger)
 	wsHandler.RegisterRoutes(router)
+
+	// Register HTTP adapter for Firestore REST API (now with WebSocket handler included)
+	httpHandler := httpadapter.NewFirestoreHTTPHandler(m.FirestoreUsecase, m.SecurityUsecase, m.RealtimeUsecase, m.AuthClient, m.Logger, m.OrganizationHandler, wsHandler)
+	httpHandler.RegisterRoutes(router)
 
 	m.Logger.Info("Firestore HTTP routes and WebSocket handler registered.")
 }

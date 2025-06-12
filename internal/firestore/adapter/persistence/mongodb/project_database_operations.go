@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
+	"firestore-clone/internal/shared/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -122,9 +123,19 @@ func (p *ProjectDatabaseOperations) DeleteProject(ctx context.Context, projectID
 	return nil
 }
 
-// ListProjects lists all projects for an owner
+// ListProjects lists all projects for an organization and optionally filters by owner
 func (p *ProjectDatabaseOperations) ListProjects(ctx context.Context, ownerEmail string) ([]*model.Project, error) {
-	filter := bson.M{"owner_email": ownerEmail}
+	// Extract organizationID from context - required for tenant isolation
+	organizationID, err := utils.GetOrganizationIDFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("organization ID required from context: %w", err)
+	}
+
+	// Build filter: must belong to the organization, optionally filter by owner
+	filter := bson.M{"organization_id": organizationID}
+	if ownerEmail != "" {
+		filter["owner_email"] = ownerEmail
+	}
 
 	cursor, err := p.projectCol.Find(ctx, filter)
 	if err != nil {

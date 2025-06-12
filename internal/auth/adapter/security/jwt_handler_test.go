@@ -31,7 +31,7 @@ func (suite *JWTTestSuite) SetupTest() {
 
 func (suite *JWTTestSuite) TestGenerateAndValidateToken_Success() {
 	ctx := context.Background()
-	token, err := suite.service.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1")
+	token, err := suite.service.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1", []string{"user"})
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), token)
 
@@ -62,7 +62,7 @@ func (suite *JWTTestSuite) TestValidateToken_ExpiredToken() {
 	})
 	assert.NoError(suite.T(), err)
 	ctx := context.Background()
-	token, err := service.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1")
+	token, err := service.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1", []string{"user"})
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), token)
 
@@ -111,9 +111,8 @@ func (suite *JWTTestSuite) TestValidateToken_SignatureInvalid() {
 	otherService, _ := security.NewJWTokenService(&config.Config{
 		JWTSecretKey:   "anothersecretkeythatisalsolongenough!",
 		JWTIssuer:      "test-issuer",
-		AccessTokenTTL: 1 * time.Hour,
-	})
-	token, err := otherService.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1")
+		AccessTokenTTL: 1 * time.Hour})
+	token, err := otherService.GenerateToken(ctx, "user-1", "user@example.com", "tenant-1", "project-1", "db-1", []string{"user"})
 	assert.NoError(suite.T(), err)
 	assert.NotEmpty(suite.T(), token)
 

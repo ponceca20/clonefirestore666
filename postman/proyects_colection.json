@@ -1,0 +1,426 @@
+{
+	"info": {
+		"_postman_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+		"name": "Firestore Clone Projects API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Collection for managing projects in the Firestore Clone API. Routes follow the pattern: /organizations/{organizationId}/projects"
+	},
+	"item": [
+		{
+			"name": "Create Project",			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 201\", function () {",
+							"    pm.response.to.have.status(201);",
+							"});",
+							"",
+							"if (pm.response.code === 201) {",
+							"    pm.test(\"Response has projectID\", function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('projectID');",
+							"        pm.expect(jsonData.projectID).to.be.a('string');",
+							"        pm.expect(jsonData.projectID).to.not.be.empty;",
+							"        pm.environment.set(\"projectID\", jsonData.projectID);",
+							"        console.log(\"projectID set to: \" + jsonData.projectID);",
+							"    });",
+							"    ",
+							"    pm.test(\"Response has required fields\", function () {",
+							"        var jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('displayName');",
+							"        pm.expect(jsonData).to.have.property('organizationId');",
+							"        pm.expect(jsonData).to.have.property('state');",
+							"        pm.expect(jsonData).to.have.property('createdAt');",
+							"        pm.expect(jsonData).to.have.property('updatedAt');",
+							"    });",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"project\": {\n    \"projectID\": \"{{newProjectID}}\",\n    \"displayName\": \"My Awesome Project\",\n    \"organizationId\": \"{{organizationId}}\",\n    \"locationId\": \"us-central1\",\n    \"ownerEmail\": \"admin@example.com\",\n    \"state\": \"ACTIVE\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects"
+					]
+				},
+				"description": "Creates a new project within the specified organization. Sets `projectID` on success."
+			},
+			"response": []
+		},		{
+			"name": "List Projects",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has projects array\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('projects');",
+							"    pm.expect(jsonData).to.have.property('count');",
+							"    pm.expect(jsonData.projects).to.be.an('array');",
+							"    pm.expect(jsonData.count).to.be.a('number');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects?ownerEmail={{ownerEmail}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects"
+					],
+					"query": [
+						{
+							"key": "ownerEmail",
+							"value": "{{ownerEmail}}",
+							"description": "Filter projects by owner email",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Lists all projects within the specified organization. Use URL: /organizations/{organizationId}/projects (NO /api/v1 prefix)"
+			},
+			"response": []
+		},		{
+			"name": "Get Project",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has project data\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('projectID');",
+							"    pm.expect(jsonData).to.have.property('displayName');",
+							"    pm.expect(jsonData).to.have.property('organizationId');",
+							"    pm.expect(jsonData.projectID).to.eql(pm.environment.get('projectID'));",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectID}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects",
+						"{{projectID}}"
+					]
+				},
+				"description": "Retrieves a specific project by its ID."
+			},
+			"response": []
+		},		{
+			"name": "Update Project",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has updated project data\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('projectID');",
+							"    pm.expect(jsonData).to.have.property('displayName');",
+							"    pm.expect(jsonData.displayName).to.eql('My Awesome Project (Updated)');",
+							"    pm.expect(jsonData.projectID).to.eql(pm.environment.get('projectID'));",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"project\": {\n    \"displayName\": \"My Awesome Project (Updated)\",\n    \"locationId\": \"us-west1\",\n    \"state\": \"ACTIVE\"\n  }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectID}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects",
+						"{{projectID}}"
+					]
+				},
+				"description": "Updates an existing project. The projectID is taken from the URL path."
+			},
+			"response": []
+		},		{
+			"name": "Delete Project",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 204\", function () {",
+							"    pm.response.to.have.status(204);",
+							"});",
+							"",
+							"pm.test(\"Response body is empty\", function () {",
+							"    pm.expect(pm.response.text()).to.be.empty;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "DELETE",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectID}}",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects",
+						"{{projectID}}"
+					]
+				},
+				"description": "Deletes a specific project by its ID."
+			},
+			"response": []
+		},
+		{
+			"name": "Create Project - Invalid Data",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 400\", function () {",
+							"    pm.response.to.have.status(400);",
+							"});",
+							"",
+							"pm.test(\"Response has error field\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('error');",
+							"    pm.expect(jsonData.error).to.eql('invalid_request_body');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"invalid\": \"data\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects"
+					]
+				},
+				"description": "Tests error handling when creating a project with invalid data."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Project - Not Found",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 404\", function () {",
+							"    pm.response.to.have.status(404);",
+							"});",
+							"",
+							"pm.test(\"Response has error field\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('error');",
+							"    pm.expect(jsonData.error).to.eql('project_not_found');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{authToken}}"
+					}
+				],
+				"url": {
+					"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/nonexistent-project-id",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"organizations",
+						"{{organizationId}}",
+						"projects",
+						"nonexistent-project-id"
+					]
+				},
+				"description": "Tests error handling when retrieving a project that doesn't exist."
+			},
+			"response": []
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{authToken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3030",
+			"type": "string"
+		},
+		{
+			"key": "organizationId",
+			"value": "your-default-org-id",
+			"type": "string"
+		},
+		{
+			"key": "projectID",
+			"value": "your-default-project-id",
+			"type": "string",
+			"description": "Current project ID (matches code parameter name)"
+		},
+		{
+			"key": "newProjectID",
+			"value": "project-{{$randomInt}}",
+			"type": "string",
+			"description": "Generated project ID for creating new projects"
+		},
+		{
+			"key": "ownerEmail",
+			"value": "admin@example.com",
+			"type": "string",
+			"description": "Email for filtering projects by owner"
+		}
+	]
+}

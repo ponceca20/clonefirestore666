@@ -417,3 +417,66 @@ func ValidateDatabaseIDFormat(databaseID string) error {
 
 	return nil
 }
+
+// TenantMiddleware validates tenant context and organization access
+func TenantMiddleware() fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Extract organization ID from path, header, query, or Authorization
+		organizationID := c.Params("organizationId")
+		if organizationID == "" {
+			organizationID = c.Get("X-Organization-ID")
+		}
+		if organizationID == "" {
+			if auth := c.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+				token := strings.TrimPrefix(auth, "Bearer ")
+				if parts := strings.Split(token, "@"); len(parts) == 2 {
+					organizationID = parts[1]
+				}
+			}
+		}
+		if organizationID == "" {
+			organizationID = c.Query("organization_id")
+		}
+		if organizationID == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "organization_id_missing",
+				"message": "Organization ID is required",
+			})
+		}
+
+		// Validate organization ID format
+		if err := ValidateOrganizationIDFormat(organizationID); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "invalid_organization_id",
+				"message": "Organization ID must start with a letter and be at least 3 characters long",
+			})
+		}
+
+		// Set organization context for downstream handlers
+		c.Locals("organizationId", organizationID)
+
+		// Add organization ID to the Go context
+		ctx := c.UserContext()
+		ctx = utils.WithOrganizationID(ctx, organizationID)
+		c.SetUserContext(ctx)
+
+		// Extract project ID from path parameter if present
+		if projectID := c.Params("projectId"); projectID != "" {
+			ctx = utils.WithProjectID(ctx, projectID)
+			c.SetUserContext(ctx)
+		}
+
+		// Extract database ID from path parameter if present
+		if databaseID := c.Params("databaseId"); databaseID != "" {
+			ctx = utils.WithDatabaseID(ctx, databaseID)
+			c.SetUserContext(ctx)
+		}
+
+		// TODO: Add tenant validation logic here
+		// - Validate organization exists
+		// - Check user access to organization
+		// - Set tenant database context
+
+		return c.Next()
+	}
+}

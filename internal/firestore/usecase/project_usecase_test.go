@@ -49,7 +49,8 @@ func TestDeleteProject(t *testing.T) {
 func TestListProjects(t *testing.T) {
 	uc := newTestFirestoreUsecase()
 	projs, err := uc.ListProjects(context.Background(), ListProjectsRequest{
-		OwnerEmail: "test@example.com",
+		OrganizationID: "test-org",
+		OwnerEmail:     "test@example.com",
 	})
 	require.NoError(t, err)
 	assert.Len(t, projs, 1)

@@ -149,8 +149,8 @@ type mockTokenService struct {
 	mock.Mock
 }
 
-func (m *mockTokenService) GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string) (string, error) {
-	args := m.Called(ctx, userID, email, tenantID, projectID, databaseID)
+func (m *mockTokenService) GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string, roles []string) (string, error) {
+	args := m.Called(ctx, userID, email, tenantID, projectID, databaseID, roles)
 	return args.String(0), args.Error(1)
 }
 
@@ -207,7 +207,7 @@ func (suite *AuthUsecaseTestSuite) TestRegister_Success() {
 	suite.mockRepo.On("CreateUser", ctx, mock.MatchedBy(func(user *model.User) bool {
 		return user.Email == email && user.TenantID == tenantID && user.FirstName == firstName && user.LastName == lastName
 	})).Return(nil)
-	suite.mockToken.On("GenerateToken", ctx, mock.AnythingOfType("string"), email, tenantID, "", "").Return(token, nil)
+	suite.mockToken.On("GenerateToken", ctx, mock.AnythingOfType("string"), email, tenantID, "", "", []string{"user"}).Return(token, nil)
 	suite.mockToken.On("GenerateRefreshToken", ctx, mock.AnythingOfType("string"), email, tenantID).Return("refresh-token", nil)
 	suite.mockRepo.On("CreateSession", ctx, mock.AnythingOfType("*model.Session")).Return(nil)
 
@@ -270,7 +270,6 @@ func (suite *AuthUsecaseTestSuite) TestLogin_Success() {
 	password := "password123"
 	tenantID := "tenant-123"
 	token := "jwt-token-456"
-
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	user := &model.User{
 		UserID:     "user-123",
@@ -279,13 +278,14 @@ func (suite *AuthUsecaseTestSuite) TestLogin_Success() {
 		Password:   string(hashedPassword),
 		IsActive:   true,
 		IsVerified: true,
+		Roles:      []string{"user"},
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 	}
 
 	suite.mockRepo.On("GetUserByEmail", ctx, email).Return(user, nil)
 	suite.mockRepo.On("UpdateUser", ctx, mock.AnythingOfType("*model.User")).Return(nil)
-	suite.mockToken.On("GenerateToken", ctx, user.UserID, email, tenantID, "", "").Return(token, nil)
+	suite.mockToken.On("GenerateToken", ctx, user.UserID, email, tenantID, "", "", []string{"user"}).Return(token, nil)
 	suite.mockToken.On("GenerateRefreshToken", ctx, user.UserID, email, tenantID).Return("refresh-token", nil)
 	suite.mockRepo.On("CreateSession", ctx, mock.AnythingOfType("*model.Session")).Return(nil)
 
@@ -461,7 +461,7 @@ func BenchmarkRegister(b *testing.B) {
 	mockRepo.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *model.User) bool {
 		return u.TenantID == "bench-tenant" && u.FirstName == "BenchFirst" && u.LastName == "BenchLast"
 	})).Return(nil)
-	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant", "bench-project", "bench-database").Return("token", nil)
+	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant", "bench-project", "bench-database", []string{"user"}).Return("token", nil)
 
 	ctx := context.Background()
 
@@ -498,9 +498,8 @@ func BenchmarkLogin(b *testing.B) {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
-
 	mockRepo.On("GetUserByEmail", mock.Anything, mock.Anything, mock.Anything).Return(user, nil)
-	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant", "bench-project", "bench-database").Return("token", nil)
+	mockToken.On("GenerateToken", mock.Anything, mock.Anything, mock.Anything, "bench-tenant", "bench-project", "bench-database", []string{"user"}).Return("token", nil)
 
 	ctx := context.Background()
 

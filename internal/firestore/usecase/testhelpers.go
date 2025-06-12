@@ -4,10 +4,15 @@ package usecase
 
 import (
 	"context"
+	"fmt"
+	"strings"
+	"sync"
+	"time"
+
+	authModel "firestore-clone/internal/auth/domain/model"
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/domain/repository"
 	"firestore-clone/internal/shared/logger"
-	"time"
 )
 
 type MockFirestoreRepo struct{}
@@ -16,7 +21,16 @@ func (m *MockFirestoreRepo) CreateDocument(ctx context.Context, projectID, datab
 	return &model.Document{DocumentID: documentID}, nil
 }
 func (m *MockFirestoreRepo) GetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) (*model.Document, error) {
-	return &model.Document{DocumentID: documentID, Fields: map[string]*model.FieldValue{"count": model.NewFieldValue(int64(42))}}, nil
+	// Return a document with some common fields that tests might expect
+	return &model.Document{
+		DocumentID: documentID,
+		Fields: map[string]*model.FieldValue{
+			"count":     model.NewFieldValue(int64(42)),
+			"counter":   model.NewFieldValue(int64(1)),           // For atomic increment tests
+			"tags":      model.NewFieldValue([]interface{}{"a"}), // For array operations
+			"updatedAt": model.NewFieldValue(time.Now()),         // For server timestamp
+		},
+	}, nil
 }
 func (m *MockFirestoreRepo) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, fields map[string]*model.FieldValue, mask []string) (*model.Document, error) {
 	return &model.Document{DocumentID: documentID}, nil
@@ -127,7 +141,8 @@ func (m *MockFirestoreRepo) DeleteDocumentByPath(ctx context.Context, path strin
 	return nil
 }
 func (m *MockFirestoreRepo) RunQuery(ctx context.Context, projectID, databaseID, collectionID string, query *model.Query) ([]*model.Document, error) {
-	return nil, nil
+	// Devuelve un documento simulado para pruebas de integración
+	return []*model.Document{{DocumentID: "doc1"}}, nil
 }
 func (m *MockFirestoreRepo) RunCollectionGroupQuery(ctx context.Context, projectID, databaseID string, collectionID string, query *model.Query) ([]*model.Document, error) {
 	return nil, nil
@@ -138,7 +153,10 @@ func (m *MockFirestoreRepo) RunAggregationQuery(ctx context.Context, projectID, 
 func (m *MockFirestoreRepo) RunTransaction(ctx context.Context, fn func(repository.Transaction) error) error {
 	return nil
 }
-func (m *MockFirestoreRepo) RunBatchWrite(ctx context.Context, projectID, databaseID string, writes []*model.WriteOperation) ([]*model.WriteResult, error) {
+
+// Add missing RunBatchWrite mock for usecase interface
+// Corrijo la firma del mock para que cumpla la interfaz del repositorio
+func (m *MockFirestoreRepo) RunBatchWrite(ctx context.Context, projectID string, databaseID string, writes []*model.WriteOperation) ([]*model.WriteResult, error) {
 	return []*model.WriteResult{{UpdateTime: time.Now()}}, nil
 }
 
@@ -182,3 +200,180 @@ func (m *MockLogger) Fatalf(format string, args ...interface{})              {}
 func (m *MockLogger) WithFields(fields map[string]interface{}) logger.Logger { return m }
 func (m *MockLogger) WithContext(ctx context.Context) logger.Logger          { return m }
 func (m *MockLogger) WithComponent(component string) logger.Logger           { return m }
+
+// MockRealtimeUsecase implements RealtimeUsecase for testing with full synchronization
+type MockRealtimeUsecase struct {
+	subscriptions map[string]map[string]chan<- model.RealtimeEvent // subscriberID -> path -> channel
+	mu            sync.RWMutex
+	events        []model.RealtimeEvent // Store events for verification
+}
+
+func NewMockRealtimeUsecase() *MockRealtimeUsecase {
+	return &MockRealtimeUsecase{
+		subscriptions: make(map[string]map[string]chan<- model.RealtimeEvent),
+		events:        make([]model.RealtimeEvent, 0),
+	}
+}
+
+func (m *MockRealtimeUsecase) Subscribe(ctx context.Context, subscriberID, path string, eventChan chan<- model.RealtimeEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.subscriptions[subscriberID] == nil {
+		m.subscriptions[subscriberID] = make(map[string]chan<- model.RealtimeEvent)
+	}
+	m.subscriptions[subscriberID][path] = eventChan
+	return nil
+}
+
+func (m *MockRealtimeUsecase) Unsubscribe(ctx context.Context, subscriberID, path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.subscriptions[subscriberID] != nil {
+		delete(m.subscriptions[subscriberID], path)
+		if len(m.subscriptions[subscriberID]) == 0 {
+			delete(m.subscriptions, subscriberID)
+		}
+	}
+	return nil
+}
+
+func (m *MockRealtimeUsecase) UnsubscribeAll(ctx context.Context, subscriberID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.subscriptions, subscriberID)
+	return nil
+}
+
+func (m *MockRealtimeUsecase) EmitEvent(event model.RealtimeEvent) {
+	m.mu.Lock()
+	m.events = append(m.events, event)
+	m.mu.Unlock()
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, paths := range m.subscriptions {
+		for path, eventChan := range paths {
+			if path == event.FullPath || strings.HasPrefix(event.FullPath, path) {
+				select {
+				case eventChan <- event:
+					// Event sent successfully
+				default:
+					// Channel is full, skip
+				}
+			}
+		}
+	}
+}
+
+func (m *MockRealtimeUsecase) GetSubscriberCount(firestorePath string) int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	count := 0
+	for _, paths := range m.subscriptions {
+		if _, exists := paths[firestorePath]; exists {
+			count++
+		}
+	}
+	return count
+}
+
+func (m *MockRealtimeUsecase) GetEventCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.events)
+}
+
+func (m *MockRealtimeUsecase) PublishEvent(ctx context.Context, event model.RealtimeEvent) error {
+	m.EmitEvent(event)
+	return nil
+}
+
+// MockSecurityUsecase implements SecurityUsecase for testing with configurable responses
+type MockSecurityUsecase struct {
+	shouldValidate bool
+	validationErr  error
+	mu             sync.RWMutex
+}
+
+func NewMockSecurityUsecase() *MockSecurityUsecase {
+	return &MockSecurityUsecase{
+		shouldValidate: true,
+		validationErr:  nil,
+	}
+}
+
+func (m *MockSecurityUsecase) SetValidationResult(shouldValidate bool, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.shouldValidate = shouldValidate
+	m.validationErr = err
+}
+
+func (m *MockSecurityUsecase) ValidateRead(ctx context.Context, user *authModel.User, path string) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if !m.shouldValidate {
+		if m.validationErr != nil {
+			return m.validationErr
+		}
+		return fmt.Errorf("validation failed")
+	}
+	return nil
+}
+
+func (m *MockSecurityUsecase) ValidateWrite(ctx context.Context, user *authModel.User, path string, data map[string]interface{}) error {
+	return m.ValidateRead(ctx, user, path)
+}
+
+func (m *MockSecurityUsecase) ValidateCreate(ctx context.Context, user *authModel.User, path string, data map[string]interface{}) error {
+	return m.ValidateRead(ctx, user, path)
+}
+
+func (m *MockSecurityUsecase) ValidateUpdate(ctx context.Context, user *authModel.User, path string, data map[string]interface{}, existingData map[string]interface{}) error {
+	return m.ValidateRead(ctx, user, path)
+}
+
+func (m *MockSecurityUsecase) ValidateDelete(ctx context.Context, user *authModel.User, path string) error {
+	return m.ValidateRead(ctx, user, path)
+}
+
+// MockAuthClient implements AuthClient for testing with configurable user
+type MockAuthClient struct {
+	user *authModel.User
+	mu   sync.RWMutex
+}
+
+func NewMockAuthClient() *MockAuthClient {
+	return &MockAuthClient{}
+}
+
+func (m *MockAuthClient) SetUser(user *authModel.User) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.user = user
+}
+
+func (m *MockAuthClient) ValidateToken(ctx context.Context, token string) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.user == nil {
+		return "", fmt.Errorf("no user configured")
+	}
+	return m.user.UserID, nil
+}
+
+func (m *MockAuthClient) GetUserByID(ctx context.Context, userID string, projectID string) (*authModel.User, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.user != nil && m.user.UserID == userID {
+		return m.user, nil
+	}
+	return nil, fmt.Errorf("user not found")
+}

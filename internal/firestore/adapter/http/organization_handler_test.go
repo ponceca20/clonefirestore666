@@ -64,7 +64,7 @@ func TestCreateOrganization_Success(t *testing.T) {
 	app.Post("/v1/organizations", h.CreateOrganization)
 
 	body := map[string]interface{}{
-		"organizationId": "org1",
+		"organizationId": "test-org-123", // Use valid org ID format
 		"displayName":    "Test Org",
 		"billingEmail":   "admin@test.com",
 	}

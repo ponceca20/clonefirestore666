@@ -1,7 +1,9 @@
 package http
 
 import (
+	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -103,21 +105,32 @@ func (h *HTTPHandler) DeleteProject(c *fiber.Ctx) error {
 
 func (h *HTTPHandler) ListProjects(c *fiber.Ctx) error {
 	h.Log.Debug("Listing projects via HTTP")
+	// Extract organizationId from URL path parameter
+	organizationID := c.Params("organizationId")
+	trimmedOrgID := strings.TrimSpace(organizationID)
 
-	req := usecase.ListProjectsRequest{
-		OwnerEmail: c.Query("ownerEmail"), // Optional filter by owner
+	if trimmedOrgID == "" || model.ValidateOrganizationID(trimmedOrgID) != nil {
+		h.Log.Error("Missing or invalid organization ID in URL path")
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_organization_id",
+			"message": "Organization ID is required in the URL path and must be valid",
+		})
 	}
 
+	req := usecase.ListProjectsRequest{
+		OrganizationID: trimmedOrgID,
+		OwnerEmail:     c.Query("ownerEmail"), // Optional filter by owner
+	}
 	projects, err := h.FirestoreUC.ListProjects(c.UserContext(), req)
 	if err != nil {
-		h.Log.Error("Failed to list projects", "error", err)
+		h.Log.Error("Failed to list projects", "error", err, "organizationID", trimmedOrgID)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":   "list_projects_failed",
 			"message": err.Error(),
 		})
 	}
 
-	h.Log.Debug("Projects listed successfully", "count", len(projects))
+	h.Log.Debug("Projects listed successfully", "count", len(projects), "organizationID", trimmedOrgID)
 	return c.JSON(fiber.Map{
 		"projects": projects,
 		"count":    len(projects),

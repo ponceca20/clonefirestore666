@@ -68,7 +68,7 @@ func (suite *MongoRepoTestSuite) TestGetUserByID_EmptyID() {
 	user, err := suite.repository.GetUserByID(context.Background(), "")
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), user)
-	assert.Contains(suite.T(), err.Error(), "id cannot be empty")
+	assert.Contains(suite.T(), err.Error(), "user ID cannot be empty")
 }
 
 func TestMongoRepoTestSuite(t *testing.T) {

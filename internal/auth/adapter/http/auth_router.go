@@ -55,9 +55,8 @@ func (h *AuthHTTPHandler) SetupAuthRoutesWithMiddleware(router fiber.Router, mid
 	protected.Get("/me", h.GetCurrentUser)
 	protected.Put("/me", h.UpdateCurrentUser)
 	protected.Post("/change-password", h.ChangePassword)
-
-	// Admin routes (for tenant management)
-	admin := router.Group("/admin", middleware.RequireRole("admin"))
+	// Admin routes (for tenant management) - extend protected group
+	admin := protected.Group("/admin", middleware.RequireRole("admin"))
 	admin.Get("/users", h.ListUsers)
 	admin.Get("/users/:userId", h.GetUser)
 	admin.Delete("/users/:userId", h.DeleteUser)
@@ -146,7 +145,7 @@ func (h *AuthHTTPHandler) Login(c *fiber.Ctx) error {
 
 // Logout handles user logout
 func (h *AuthHTTPHandler) Logout(c *fiber.Ctx) error {
-	userID, err := utils.GetUserIDFromContext(c.Context())
+	userID, err := utils.GetUserIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
@@ -194,7 +193,7 @@ func (h *AuthHTTPHandler) RefreshToken(c *fiber.Ctx) error {
 
 // GetCurrentUser returns current user information
 func (h *AuthHTTPHandler) GetCurrentUser(c *fiber.Ctx) error {
-	userID, err := utils.GetUserIDFromContext(c.Context())
+	userID, err := utils.GetUserIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
@@ -213,7 +212,7 @@ func (h *AuthHTTPHandler) GetCurrentUser(c *fiber.Ctx) error {
 
 // UpdateCurrentUser updates current user information
 func (h *AuthHTTPHandler) UpdateCurrentUser(c *fiber.Ctx) error {
-	userID, err := utils.GetUserIDFromContext(c.Context())
+	userID, err := utils.GetUserIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
@@ -263,7 +262,7 @@ func (h *AuthHTTPHandler) UpdateCurrentUser(c *fiber.Ctx) error {
 
 // ChangePassword handles password change
 func (h *AuthHTTPHandler) ChangePassword(c *fiber.Ctx) error {
-	userID, err := utils.GetUserIDFromContext(c.Context())
+	userID, err := utils.GetUserIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Unauthorized",
@@ -294,7 +293,7 @@ func (h *AuthHTTPHandler) ChangePassword(c *fiber.Ctx) error {
 
 // ListUsers lists users (admin only)
 func (h *AuthHTTPHandler) ListUsers(c *fiber.Ctx) error {
-	tenantID, err := utils.GetTenantIDFromContext(c.Context())
+	tenantID, err := utils.GetTenantIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Tenant ID required",

@@ -60,14 +60,16 @@ func (uc *FirestoreUsecase) DeleteProject(ctx context.Context, req DeleteProject
 }
 
 func (uc *FirestoreUsecase) ListProjects(ctx context.Context, req ListProjectsRequest) ([]*model.Project, error) {
-	uc.logger.Debug("Listing projects", "ownerEmail", req.OwnerEmail)
+	uc.logger.Debug("Listing projects", "organizationID", req.OrganizationID, "ownerEmail", req.OwnerEmail)
 
+	// The tenant-aware repository automatically filters by organization from context
+	// OrganizationID is extracted from context by TenantAwareDocumentRepository
 	projects, err := uc.firestoreRepo.ListProjects(ctx, req.OwnerEmail)
 	if err != nil {
-		uc.logger.Error("Failed to list projects", "error", err, "ownerEmail", req.OwnerEmail)
+		uc.logger.Error("Failed to list projects", "error", err, "organizationID", req.OrganizationID, "ownerEmail", req.OwnerEmail)
 		return nil, fmt.Errorf("failed to list projects: %w", err)
 	}
 
-	uc.logger.Debug("Listed projects successfully", "count", len(projects))
+	uc.logger.Debug("Listed projects successfully", "count", len(projects), "organizationID", req.OrganizationID)
 	return projects, nil
 }

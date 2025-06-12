@@ -168,6 +168,40 @@ func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
 	})
 }
 
+// ListDocuments lists all documents in a collection with pagination
+func (h *HTTPHandler) ListDocuments(c *fiber.Ctx) error {
+	h.Log.Debug("Listing documents via HTTP", "collection", c.Params("collectionID"))
+
+	req := usecase.ListDocumentsRequest{
+		ProjectID:    c.Params("projectID"),
+		DatabaseID:   c.Params("databaseID"),
+		CollectionID: c.Params("collectionID"),
+	}
+
+	// Parse optional query parameters
+	if pageSize := c.QueryInt("pageSize"); pageSize > 0 {
+		req.PageSize = int32(pageSize)
+	}
+	req.PageToken = c.Query("pageToken")
+	req.OrderBy = c.Query("orderBy")
+	req.ShowMissing = c.QueryBool("showMissing")
+
+	documents, err := h.FirestoreUC.ListDocuments(c.UserContext(), req)
+	if err != nil {
+		h.Log.Error("Failed to list documents", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "list_documents_failed",
+			"message": err.Error(),
+		})
+	}
+
+	h.Log.Debug("Documents listed successfully", "count", len(documents))
+	return c.JSON(fiber.Map{
+		"documents": documents,
+		"count":     len(documents),
+	})
+}
+
 // Helper to parse updateMask query param as []string (comma-separated)
 func parseUpdateMaskQuery(c *fiber.Ctx) []string {
 	maskParam := c.Query("updateMask")

@@ -144,11 +144,37 @@ func (m *AuthMiddleware) Protect() fiber.Handler {
 // RequireRole returns middleware that requires a specific role
 func (m *AuthMiddleware) RequireRole(role string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// First run protection middleware
-		if err := m.Protect()(c); err != nil {
-			return err
+		// Check if context is already set by Protect() middleware
+		ctx := c.UserContext()
+		userIDVal := ctx.Value(contextkeys.UserIDKey)
+
+		if userIDVal != nil {
+			// Context already set by Protect(), just validate token for roles
+			token, err := m.extractToken(c)
+			if err != nil {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"error": "Authentication required",
+				})
+			}
+
+			claims, err := m.usecase.ValidateToken(c.Context(), token)
+			if err != nil {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+					"error": "Invalid token",
+				})
+			}
+
+			if !claims.HasRole(role) {
+				return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+					"error": "Insufficient permissions",
+				})
+			}
+
+			return c.Next()
 		}
 
+		// Context not set, this middleware is being used standalone
+		// Perform full authentication and authorization
 		token, err := m.extractToken(c)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -169,6 +195,24 @@ func (m *AuthMiddleware) RequireRole(role string) fiber.Handler {
 			})
 		}
 
+		// Set context for handlers
+		ctx = c.UserContext()
+		ctx = context.WithValue(ctx, contextkeys.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, contextkeys.UserEmailKey, claims.Email)
+		if claims.TenantID != "" {
+			ctx = context.WithValue(ctx, contextkeys.TenantIDKey, claims.TenantID)
+		}
+		if claims.OrganizationID != "" {
+			ctx = context.WithValue(ctx, contextkeys.OrganizationIDKey, claims.OrganizationID)
+		}
+		if claims.ProjectID != "" {
+			ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, claims.ProjectID)
+		}
+		if claims.DatabaseID != "" {
+			ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, claims.DatabaseID)
+		}
+
+		c.SetUserContext(ctx)
 		return c.Next()
 	}
 }
@@ -176,11 +220,6 @@ func (m *AuthMiddleware) RequireRole(role string) fiber.Handler {
 // RequirePermission returns middleware that requires a specific permission
 func (m *AuthMiddleware) RequirePermission(permission string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// First run protection middleware
-		if err := m.Protect()(c); err != nil {
-			return err
-		}
-
 		token, err := m.extractToken(c)
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
@@ -201,6 +240,24 @@ func (m *AuthMiddleware) RequirePermission(permission string) fiber.Handler {
 			})
 		}
 
+		// Add user context using context.WithValue
+		ctx := c.UserContext()
+		ctx = context.WithValue(ctx, contextkeys.UserIDKey, claims.UserID)
+		ctx = context.WithValue(ctx, contextkeys.UserEmailKey, claims.Email)
+		if claims.TenantID != "" {
+			ctx = context.WithValue(ctx, contextkeys.TenantIDKey, claims.TenantID)
+		}
+		if claims.OrganizationID != "" {
+			ctx = context.WithValue(ctx, contextkeys.OrganizationIDKey, claims.OrganizationID)
+		}
+		if claims.ProjectID != "" {
+			ctx = context.WithValue(ctx, contextkeys.ProjectIDKey, claims.ProjectID)
+		}
+		if claims.DatabaseID != "" {
+			ctx = context.WithValue(ctx, contextkeys.DatabaseIDKey, claims.DatabaseID)
+		}
+
+		c.SetUserContext(ctx)
 		return c.Next()
 	}
 }

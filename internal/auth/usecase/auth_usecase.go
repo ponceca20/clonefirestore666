@@ -190,7 +190,6 @@ func (uc *AuthUsecase) Register(ctx context.Context, req RegisterRequest) (*Auth
 	if errs := user.ValidateFields(); len(errs) > 0 {
 		return nil, fmt.Errorf("validation failed: %v", errs)
 	}
-
 	// Save user
 	if err := uc.authRepo.CreateUser(ctx, user); err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
@@ -198,7 +197,7 @@ func (uc *AuthUsecase) Register(ctx context.Context, req RegisterRequest) (*Auth
 
 	// Generate tokens
 	accessToken, err := uc.tokenSvc.GenerateToken(
-		ctx, user.UserID, user.Email, user.TenantID, "", "",
+		ctx, user.UserID, user.Email, user.TenantID, "", "", user.Roles,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -267,7 +266,6 @@ func (uc *AuthUsecase) Login(ctx context.Context, req LoginRequest) (*AuthRespon
 		uc.authRepo.UpdateUser(ctx, user)
 		return nil, model.ErrInvalidPassword
 	}
-
 	// Update last login
 	user.UpdateLastLogin()
 	if err := uc.authRepo.UpdateUser(ctx, user); err != nil {
@@ -276,7 +274,7 @@ func (uc *AuthUsecase) Login(ctx context.Context, req LoginRequest) (*AuthRespon
 
 	// Generate tokens
 	accessToken, err := uc.tokenSvc.GenerateToken(
-		ctx, user.UserID, user.Email, user.TenantID, "", "",
+		ctx, user.UserID, user.Email, user.TenantID, "", "", user.Roles,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)
@@ -335,7 +333,6 @@ func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
-
 	// Check if user can still login
 	if !user.CanLogin() {
 		return nil, fmt.Errorf("user cannot login")
@@ -343,7 +340,7 @@ func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*
 
 	// Generate new tokens
 	newAccessToken, err := uc.tokenSvc.GenerateToken(
-		ctx, user.UserID, user.Email, user.TenantID, "", "",
+		ctx, user.UserID, user.Email, user.TenantID, "", "", user.Roles,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate access token: %w", err)

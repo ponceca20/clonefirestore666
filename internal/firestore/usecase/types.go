@@ -141,7 +141,8 @@ type GetProjectRequest struct {
 }
 
 type ListProjectsRequest struct {
-	OwnerEmail string `json:"ownerEmail,omitempty"`
+	OrganizationID string `json:"organizationId,omitempty"`
+	OwnerEmail     string `json:"ownerEmail,omitempty"`
 }
 
 // Database operations

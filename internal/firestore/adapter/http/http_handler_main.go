@@ -17,6 +17,7 @@ type HTTPHandler struct {
 	AuthClient          client.AuthClient
 	Log                 logger.Logger
 	OrganizationHandler *OrganizationHandler // Organization management
+	WebSocketHandler    *WebSocketHandler    // Real-time WebSocket support
 }
 
 // NewFirestoreHTTPHandler creates a new HTTPHandler with organization support
@@ -27,6 +28,7 @@ func NewFirestoreHTTPHandler(
 	authClient client.AuthClient,
 	log logger.Logger,
 	organizationHandler *OrganizationHandler,
+	webSocketHandler *WebSocketHandler,
 ) *HTTPHandler {
 	return &HTTPHandler{
 		FirestoreUC:         firestoreUC,
@@ -35,6 +37,7 @@ func NewFirestoreHTTPHandler(
 		AuthClient:          authClient,
 		Log:                 log,
 		OrganizationHandler: organizationHandler,
+		WebSocketHandler:    webSocketHandler,
 	}
 }
 
@@ -45,6 +48,11 @@ func (h *HTTPHandler) RegisterRoutes(router fiber.Router) {
 		if app, ok := router.(*fiber.App); ok {
 			h.registerOrganizationRoutes(app)
 		}
+	}
+
+	// Register WebSocket routes for real-time updates
+	if h.WebSocketHandler != nil {
+		h.WebSocketHandler.RegisterRoutes(router)
 	}
 
 	// Register Firestore API routes with organization hierarchy
@@ -60,14 +68,17 @@ func (h *HTTPHandler) RegisterRoutes(router fiber.Router) {
 	h.registerBatchRoutes(dbAPI)
 	h.registerTransactionRoutes(dbAPI)
 	h.registerAtomicRoutes(dbAPI)
-	h.registerProjectRoutes(projectAPI)
-	h.registerDatabaseRoutes(projectAPI)
+	h.registerProjectRoutes(orgAPI)      // Projects should be at org level
+	h.registerDatabaseRoutes(projectAPI) // Databases should be at project level
 }
 
 // registerOrganizationRoutes handles organization-level routes
 func (h *HTTPHandler) registerOrganizationRoutes(app *fiber.App) {
 	// Organization routes are handled by OrganizationHandler
 	// This follows the separation of concerns principle
+	if h.OrganizationHandler != nil {
+		h.OrganizationHandler.RegisterRoutes(app)
+	}
 }
 
 // registerDocumentRoutes registers document-related endpoints
@@ -77,6 +88,7 @@ func (h *HTTPHandler) registerDocumentRoutes(router fiber.Router) {
 	router.Put("/documents/:collectionID/:documentID", h.UpdateDocument)
 	router.Delete("/documents/:collectionID/:documentID", h.DeleteDocument)
 	router.Post("/query/:collectionID", h.QueryDocuments)
+	router.Get("/documents/:collectionID", h.ListDocuments) // List all documents in a collection
 }
 
 // registerCollectionRoutes registers collection-related endpoints

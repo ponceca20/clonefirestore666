@@ -1,0 +1,709 @@
+{
+  "info": {
+    "_postman_id": "b2c3d4e5-f6g7-8901-2345-678901abcdef",
+    "name": "Firestore Clone Database API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection for managing databases in the Firestore Clone API. Routes follow the pattern: /organizations/{organizationId}/projects/{projectId}/databases"
+  },
+  "item": [
+    {
+      "name": "Create Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "if (pm.response.code === 201) {",
+              "    pm.test(\"Response has databaseID\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('databaseID');",
+              "        pm.expect(jsonData.databaseID).to.be.a('string');",
+              "        ",
+              "        // Set the created database ID for subsequent requests",
+              "        pm.environment.set('createdDatabaseId', jsonData.databaseID);",
+              "        console.log('Database created with ID: ' + jsonData.databaseID);",
+              "    });",
+              "    ",
+              "    pm.test(\"Response has required database properties\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('name');",
+              "        pm.expect(jsonData).to.have.property('projectID');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"database\": {\n    \"databaseID\": \"{{databaseId}}\",\n    \"name\": \"Test Database\",\n    \"displayName\": \"Test Database for Development\",\n    \"locationId\": \"us-central1\",\n    \"type\": \"FIRESTORE_NATIVE\",\n    \"concurrencyMode\": \"OPTIMISTIC\",\n    \"appEngineIntegrationMode\": \"DISABLED\",\n    \"pointInTimeRecoveryEnablement\": \"POINT_IN_TIME_RECOVERY_ENABLED\",\n    \"deleteProtectionState\": \"DELETE_PROTECTION_DISABLED\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases"
+          ]
+        },
+        "description": "Creates a new database within a project. The database ID will be set from the environment variable."
+      },
+      "response": []
+    },
+    {
+      "name": "List Databases",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has databases array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('databases');",
+              "    pm.expect(jsonData.databases).to.be.an('array');",
+              "});",
+              "",
+              "pm.test(\"Response has count property\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('count');",
+              "    pm.expect(jsonData.count).to.be.a('number');",
+              "});",
+              "",
+              "// Log the number of databases found",
+              "if (pm.response.code === 200) {",
+              "    var jsonData = pm.response.json();",
+              "    console.log('Found ' + jsonData.count + ' databases in project ' + pm.environment.get('projectId'));",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases"
+          ]
+        },
+        "description": "Lists all databases within a project. Useful for seeing available databases before performing operations."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has database properties\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('databaseID');",
+              "    pm.expect(jsonData).to.have.property('name');",
+              "    pm.expect(jsonData).to.have.property('projectID');",
+              "});",
+              "",
+              "pm.test(\"Database ID matches request\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var expectedDatabaseId = pm.environment.get('databaseId');",
+              "    pm.expect(jsonData.databaseID).to.eql(expectedDatabaseId);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases",
+            "{{databaseId}}"
+          ]
+        },
+        "description": "Retrieves details of a specific database by ID. Uses the databaseId from environment variables."
+      },
+      "response": []
+    },
+    {
+      "name": "Update Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has updated database properties\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('databaseID');",
+              "    pm.expect(jsonData).to.have.property('displayName');",
+              "});",
+              "",
+              "pm.test(\"Database display name was updated\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.displayName).to.include('Updated');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"database\": {\n    \"databaseID\": \"{{databaseId}}\",\n    \"displayName\": \"Updated Test Database\",\n    \"pointInTimeRecoveryEnablement\": \"POINT_IN_TIME_RECOVERY_ENABLED\",\n    \"deleteProtectionState\": \"DELETE_PROTECTION_ENABLED\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases",
+            "{{databaseId}}"
+          ]
+        },
+        "description": "Updates database properties. Only modifiable fields should be included in the request body."
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 204\", function () {",
+              "    pm.response.to.have.status(204);",
+              "});",
+              "",
+              "pm.test(\"Response body is empty\", function () {",
+              "    pm.expect(pm.response.text()).to.be.empty;",
+              "});",
+              "",
+              "// Clean up environment variable",
+              "pm.environment.unset('createdDatabaseId');",
+              "console.log('Database deleted successfully');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases",
+            "{{databaseId}}"
+          ]
+        },
+        "description": "Deletes a database. This operation is irreversible and will remove all data within the database."
+      },
+      "response": []
+    },
+    {
+      "name": "Get Default Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has default database properties\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('databaseID');",
+              "    pm.expect(jsonData.databaseID).to.eql('(default)');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text",
+            "description": "Organization ID for tenant isolation"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/(default)",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases",
+            "(default)"
+          ]
+        },
+        "description": "Retrieves the default database. Every Firestore project has a default database named '(default)'."
+      },
+      "response": []
+    },
+    {
+      "name": "Create Custom Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 201\", function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "if (pm.response.code === 201) {",
+              "    pm.test(\"Custom database created\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('databaseID');",
+              "        pm.expect(jsonData.databaseID).to.include('custom');",
+              "        ",
+              "        // Set custom database ID for cleanup",
+              "        pm.environment.set('customDatabaseId', jsonData.databaseID);",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"database\": {\n    \"databaseID\": \"custom-db-{{$timestamp}}\",\n    \"name\": \"Custom Database\",\n    \"displayName\": \"Custom Database for Testing\",\n    \"locationId\": \"us-east1\",\n    \"type\": \"FIRESTORE_NATIVE\",\n    \"concurrencyMode\": \"PESSIMISTIC\",\n    \"appEngineIntegrationMode\": \"DISABLED\",\n    \"pointInTimeRecoveryEnablement\": \"POINT_IN_TIME_RECOVERY_DISABLED\",\n    \"deleteProtectionState\": \"DELETE_PROTECTION_DISABLED\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases"
+          ]
+        },
+        "description": "Creates a custom database with a unique timestamp-based ID for testing purposes."
+      },
+      "response": []
+    },
+    {
+      "name": "Error Test - Create Database Without Auth",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401 (Unauthorized)\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test(\"Error response has error property\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"database\": {\n    \"databaseID\": \"unauthorized-test\",\n    \"name\": \"Unauthorized Test\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases"
+          ]
+        },
+        "description": "Tests error handling when trying to create a database without authentication token."
+      },
+      "response": []
+    },
+    {
+      "name": "Error Test - Get Non-existent Database",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404 (Not Found)\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Error response contains database_not_found\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.error).to.include('not_found');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/non-existent-database",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases",
+            "non-existent-database"
+          ]
+        },
+        "description": "Tests error handling when trying to get a database that doesn't exist."
+      },
+      "response": []
+    },
+    {
+      "name": "Error Test - Invalid Database Data",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 400 (Bad Request)\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});",
+              "",
+              "pm.test(\"Error response indicates missing database\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('error');",
+              "    pm.expect(jsonData.error).to.include('missing_database');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{authToken}}",
+            "type": "text"
+          },
+          {
+            "key": "X-Organization-ID",
+            "value": "{{organizationId}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"invalidField\": \"invalid data\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "organizations",
+            "{{organizationId}}",
+            "projects",
+            "{{projectId}}",
+            "databases"
+          ]
+        },
+        "description": "Tests error handling when creating a database with invalid or missing required data."
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Ensure required environment variables are set",
+          "if (!pm.environment.get('baseUrl')) {",
+          "    console.error('baseUrl environment variable is not set');",
+          "}",
+          "",
+          "if (!pm.environment.get('organizationId')) {",
+          "    console.error('organizationId environment variable is not set');",
+          "}",
+          "",
+          "if (!pm.environment.get('projectId')) {",
+          "    console.error('projectId environment variable is not set');",
+          "}",
+          "",
+          "if (!pm.environment.get('databaseId')) {",
+          "    console.log('databaseId not set, using default: (default)');",
+          "    pm.environment.set('databaseId', '(default)');",
+          "}",
+          "",
+          "console.log('Using database collection with:');",
+          "console.log('- Base URL: ' + pm.environment.get('baseUrl'));",
+          "console.log('- Organization ID: ' + pm.environment.get('organizationId'));",
+          "console.log('- Project ID: ' + pm.environment.get('projectId'));",
+          "console.log('- Database ID: ' + pm.environment.get('databaseId'));"
+        ],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [
+          "// Global test to ensure response format consistency",
+          "pm.test(\"Response time is less than 5000ms\", function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test(\"Response has valid JSON format\", function () {",
+          "    pm.response.to.have.jsonBody();",
+          "});",
+          "",
+          "// Log response for debugging",
+          "if (pm.response.code >= 400) {",
+          "    console.log('Error Response Body:', pm.response.json());",
+          "}"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "testDatabasePrefix",
+      "value": "test-db",
+      "type": "string"
+    },
+    {
+      "key": "defaultLocation",
+      "value": "us-central1",
+      "type": "string"
+    }
+  ]
+}

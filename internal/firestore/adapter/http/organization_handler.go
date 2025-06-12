@@ -51,8 +51,8 @@ func (h *OrganizationHandler) RegisterRoutes(router fiber.Router) {
 
 	// Organization-scoped endpoints (Firestore hierarchy)
 	orgScoped := orgs.Group("/:organizationId", TenantMiddleware())
-	orgScoped.Get("/projects", h.ListOrganizationProjects) // GET /organizations/{organizationId}/projects
-	orgScoped.Get("/usage", h.GetOrganizationUsage)        // GET /organizations/{organizationId}/usage
+	// Note: Project routes are handled by HTTPHandler.registerProjectRoutes to avoid conflicts
+	orgScoped.Get("/usage", h.GetOrganizationUsage) // GET /organizations/{organizationId}/usage
 }
 
 // CreateOrganization creates a new organization
@@ -178,12 +178,15 @@ func (h *OrganizationHandler) GetOrganization(c *fiber.Ctx) error {
 
 // ListOrganizations lists organizations with pagination
 // GET /v1/organizations
-func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
-	// Parse pagination parameters
+func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error { // Parse pagination parameters
 	pageSize := 10 // default
 	if ps := c.Query("pageSize"); ps != "" {
-		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 && parsed <= 100 {
-			pageSize = parsed
+		if parsed, err := strconv.Atoi(ps); err == nil && parsed > 0 {
+			if parsed > 100 {
+				pageSize = 100 // Cap at 100
+			} else {
+				pageSize = parsed
+			}
 		}
 	}
 
@@ -211,24 +214,33 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error {
 			"error":   "list_organizations_failed",
 			"message": "Failed to list organizations",
 		})
+	} // Convert to response format
+	var orgResponses []OrganizationResponse
+	if organizations != nil {
+		for _, org := range organizations {
+			// Add nil check for safety
+			if org == nil {
+				continue
+			}
+			orgResponses = append(orgResponses, OrganizationResponse{
+				Name:            "organizations/" + org.OrganizationID,
+				OrganizationID:  org.OrganizationID,
+				DisplayName:     org.DisplayName,
+				Description:     org.Description,
+				BillingEmail:    org.BillingEmail,
+				AdminEmails:     org.AdminEmails,
+				DefaultLocation: org.DefaultLocation,
+				State:           string(org.State),
+				CreatedAt:       org.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				UpdatedAt:       org.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				ProjectCount:    org.ProjectCount,
+			})
+		}
 	}
 
-	// Convert to response format
-	var orgResponses []OrganizationResponse
-	for _, org := range organizations {
-		orgResponses = append(orgResponses, OrganizationResponse{
-			Name:            "organizations/" + org.OrganizationID,
-			OrganizationID:  org.OrganizationID,
-			DisplayName:     org.DisplayName,
-			Description:     org.Description,
-			BillingEmail:    org.BillingEmail,
-			AdminEmails:     org.AdminEmails,
-			DefaultLocation: org.DefaultLocation,
-			State:           string(org.State),
-			CreatedAt:       org.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt:       org.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-			ProjectCount:    org.ProjectCount,
-		})
+	// Ensure orgResponses is never nil
+	if orgResponses == nil {
+		orgResponses = []OrganizationResponse{}
 	}
 
 	return c.JSON(ListOrganizationsResponse{
@@ -322,33 +334,13 @@ func (h *OrganizationHandler) DeleteOrganization(c *fiber.Ctx) error {
 			"message": "Failed to delete organization",
 		})
 	}
-
 	return c.Status(fiber.StatusNoContent).Send(nil)
-}
-
-// ListOrganizationProjects lists projects within an organization
-// GET /v1/organizations/{organizationId}/projects
-func (h *OrganizationHandler) ListOrganizationProjects(c *fiber.Ctx) error {
-	organizationID, err := utils.GetOrganizationIDFromContext(c.Context())
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error":   "missing_organization_id",
-			"message": "Organization ID is required",
-		})
-	}
-	// TODO: Implement project listing for organization
-	// This would require a project repository method
-	return c.JSON(fiber.Map{
-		"organizationId": organizationID,
-		"projects":       []interface{}{},
-		"message":        "Project listing not yet implemented",
-	})
 }
 
 // GetOrganizationUsage gets usage statistics for an organization
 // GET /v1/organizations/{organizationId}/usage
 func (h *OrganizationHandler) GetOrganizationUsage(c *fiber.Ctx) error {
-	organizationID, err := utils.GetOrganizationIDFromContext(c.Context())
+	organizationID, err := utils.GetOrganizationIDFromContext(c.UserContext())
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":   "missing_organization_id",

@@ -44,7 +44,7 @@ func NewJWTokenService(cfg *config.Config) (*JWTokenService, error) {
 }
 
 // GenerateToken generates a new JWT token for the given user with Firestore context
-func (s *JWTokenService) GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string) (string, error) {
+func (s *JWTokenService) GenerateToken(ctx context.Context, userID, email, tenantID, projectID, databaseID string, roles []string) (string, error) {
 	now := time.Now()
 	claims := &repository.Claims{
 		UserID:     userID,
@@ -52,6 +52,7 @@ func (s *JWTokenService) GenerateToken(ctx context.Context, userID, email, tenan
 		TenantID:   tenantID,
 		ProjectID:  projectID,
 		DatabaseID: databaseID,
+		Roles:      roles,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuer,
 			Subject:   userID,

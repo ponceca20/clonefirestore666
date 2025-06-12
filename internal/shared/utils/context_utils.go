@@ -21,112 +21,100 @@ var (
 	ErrRequestIDNotString      = errors.New("requestID in context is not a string")
 	ErrOrganizationIDNotFound  = errors.New("organizationID not found in context")
 	ErrOrganizationIDNotString = errors.New("organizationID in context is not a string")
+	ErrUserEmailNotFound       = errors.New("userEmail not found in context")
+	ErrUserEmailNotString      = errors.New("userEmail in context is not a string")
 )
 
 // GetTenantIDFromContext retrieves the tenant ID from the context.
 // It returns the tenant ID and an error if the tenant ID is not found or is not a string.
 func GetTenantIDFromContext(ctx context.Context) (string, error) {
-	tenantIDVal := ctx.Value(contextkeys.TenantIDKey)
-	if tenantIDVal == nil {
+	val := ctx.Value(contextkeys.TenantIDKey)
+	if val == nil {
 		return "", ErrTenantIDNotFound
 	}
-
-	tenantID, ok := tenantIDVal.(string)
+	tenantID, ok := val.(string)
 	if !ok {
 		return "", ErrTenantIDNotString
 	}
-
 	return tenantID, nil
 }
 
 // GetOrganizationIDFromContext retrieves the organization ID from the context.
 func GetOrganizationIDFromContext(ctx context.Context) (string, error) {
-	orgIDVal := ctx.Value(contextkeys.OrganizationIDKey)
-	if orgIDVal == nil {
+	val := ctx.Value(contextkeys.OrganizationIDKey)
+	if val == nil {
 		return "", ErrOrganizationIDNotFound
 	}
-
-	orgID, ok := orgIDVal.(string)
+	organizationID, ok := val.(string)
 	if !ok {
 		return "", ErrOrganizationIDNotString
 	}
-
-	return orgID, nil
+	return organizationID, nil
 }
 
 // GetUserIDFromContext retrieves the user ID from the context.
 func GetUserIDFromContext(ctx context.Context) (string, error) {
-	userIDVal := ctx.Value(contextkeys.UserIDKey)
-	if userIDVal == nil {
+	val := ctx.Value(contextkeys.UserIDKey)
+	if val == nil {
 		return "", ErrUserIDNotFound
 	}
-
-	userID, ok := userIDVal.(string)
+	userID, ok := val.(string)
 	if !ok {
 		return "", ErrUserIDNotString
 	}
-
 	return userID, nil
 }
 
 // GetProjectIDFromContext retrieves the project ID from the context.
 func GetProjectIDFromContext(ctx context.Context) (string, error) {
-	projectIDVal := ctx.Value(contextkeys.ProjectIDKey)
-	if projectIDVal == nil {
+	val := ctx.Value(contextkeys.ProjectIDKey)
+	if val == nil {
 		return "", ErrProjectIDNotFound
 	}
-
-	projectID, ok := projectIDVal.(string)
+	projectID, ok := val.(string)
 	if !ok {
 		return "", ErrProjectIDNotString
 	}
-
 	return projectID, nil
 }
 
 // GetDatabaseIDFromContext retrieves the database ID from the context.
 func GetDatabaseIDFromContext(ctx context.Context) (string, error) {
-	databaseIDVal := ctx.Value(contextkeys.DatabaseIDKey)
-	if databaseIDVal == nil {
+	val := ctx.Value(contextkeys.DatabaseIDKey)
+	if val == nil {
 		return "", ErrDatabaseIDNotFound
 	}
-
-	databaseID, ok := databaseIDVal.(string)
+	databaseID, ok := val.(string)
 	if !ok {
 		return "", ErrDatabaseIDNotString
 	}
-
 	return databaseID, nil
 }
 
 // GetRequestIDFromContext retrieves the request ID from the context.
 func GetRequestIDFromContext(ctx context.Context) (string, error) {
-	requestIDVal := ctx.Value(contextkeys.RequestIDKey)
-	if requestIDVal == nil {
+	val := ctx.Value(contextkeys.RequestIDKey)
+	if val == nil {
 		return "", ErrRequestIDNotFound
 	}
-
-	requestID, ok := requestIDVal.(string)
+	requestID, ok := val.(string)
 	if !ok {
 		return "", ErrRequestIDNotString
 	}
-
 	return requestID, nil
 }
 
 // GetUserEmailFromContext retrieves the user email from the context.
 func GetUserEmailFromContext(ctx context.Context) (string, error) {
-	emailVal := ctx.Value(contextkeys.UserEmailKey)
-	if emailVal == nil {
-		return "", errors.New("userEmail not found in context")
+	val := ctx.Value(contextkeys.UserEmailKey)
+	if val == nil {
+		return "", ErrUserEmailNotFound
 	}
-
-	email, ok := emailVal.(string)
+	userEmail, ok := val.(string)
 	if !ok {
-		return "", errors.New("userEmail in context is not a string")
+		return "", ErrUserEmailNotString
 	}
-
-	return email, nil
+	return userEmail, nil
 }
 
 // Context builder functions
@@ -162,8 +150,8 @@ func WithRequestID(ctx context.Context, requestID string) context.Context {
 }
 
 // WithUserEmail adds user email to context
-func WithUserEmail(ctx context.Context, email string) context.Context {
-	return context.WithValue(ctx, contextkeys.UserEmailKey, email)
+func WithUserEmail(ctx context.Context, userEmail string) context.Context {
+	return context.WithValue(ctx, contextkeys.UserEmailKey, userEmail)
 }
 
 // WithComponent adds component name to context
@@ -179,70 +167,66 @@ func WithOperation(ctx context.Context, operation string) context.Context {
 // Optional getters that return default values instead of errors
 
 // GetTenantIDOrDefault retrieves the tenant ID from context or returns a default value
-func GetTenantIDOrDefault(ctx context.Context, defaultValue string) string {
-	if tenantID, err := GetTenantIDFromContext(ctx); err == nil {
-		return tenantID
+func GetTenantIDOrDefault(ctx context.Context, def string) string {
+	if v, err := GetTenantIDFromContext(ctx); err == nil {
+		return v
 	}
-	return defaultValue
+	return def
 }
 
 // GetOrganizationIDOrDefault retrieves the organization ID from context or returns a default value
-func GetOrganizationIDOrDefault(ctx context.Context, defaultValue string) string {
-	if organizationID, err := GetOrganizationIDFromContext(ctx); err == nil {
-		return organizationID
+func GetOrganizationIDOrDefault(ctx context.Context, def string) string {
+	if v, err := GetOrganizationIDFromContext(ctx); err == nil {
+		return v
 	}
-	return defaultValue
+	return def
 }
 
 // GetUserIDOrDefault retrieves the user ID from context or returns a default value
-func GetUserIDOrDefault(ctx context.Context, defaultValue string) string {
-	if userID, err := GetUserIDFromContext(ctx); err == nil {
-		return userID
+func GetUserIDOrDefault(ctx context.Context, def string) string {
+	if v, err := GetUserIDFromContext(ctx); err == nil {
+		return v
 	}
-	return defaultValue
+	return def
 }
 
 // GetProjectIDOrDefault retrieves the project ID from context or returns a default value
-func GetProjectIDOrDefault(ctx context.Context, defaultValue string) string {
-	if projectID, err := GetProjectIDFromContext(ctx); err == nil {
-		return projectID
+func GetProjectIDOrDefault(ctx context.Context, def string) string {
+	if v, err := GetProjectIDFromContext(ctx); err == nil {
+		return v
 	}
-	return defaultValue
+	return def
 }
 
 // GetDatabaseIDOrDefault retrieves the database ID from context or returns a default value
-func GetDatabaseIDOrDefault(ctx context.Context, defaultValue string) string {
-	if databaseID, err := GetDatabaseIDFromContext(ctx); err == nil {
-		return databaseID
+func GetDatabaseIDOrDefault(ctx context.Context, def string) string {
+	if v, err := GetDatabaseIDFromContext(ctx); err == nil {
+		return v
 	}
-	return defaultValue
+	return def
 }
 
-// HasTenantID checks if context has a tenant ID
+// HasX checks
 func HasTenantID(ctx context.Context) bool {
 	_, err := GetTenantIDFromContext(ctx)
 	return err == nil
 }
 
-// HasOrganizationID checks if context has an organization ID
 func HasOrganizationID(ctx context.Context) bool {
 	_, err := GetOrganizationIDFromContext(ctx)
 	return err == nil
 }
 
-// HasUserID checks if context has a user ID
 func HasUserID(ctx context.Context) bool {
 	_, err := GetUserIDFromContext(ctx)
 	return err == nil
 }
 
-// HasProjectID checks if context has a project ID
 func HasProjectID(ctx context.Context) bool {
 	_, err := GetProjectIDFromContext(ctx)
 	return err == nil
 }
 
-// HasDatabaseID checks if context has a database ID
 func HasDatabaseID(ctx context.Context) bool {
 	_, err := GetDatabaseIDFromContext(ctx)
 	return err == nil
