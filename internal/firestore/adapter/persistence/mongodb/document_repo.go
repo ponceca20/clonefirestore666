@@ -43,8 +43,8 @@ type DocumentRepository struct {
 	collectionOps *CollectionOperations
 	atomicOps     *AtomicOperations
 	projectDbOps  *ProjectDatabaseOperations
-	databaseOps   *DatabaseOperations
-	indexOps      *IndexOperations
+	// databaseOps removed to avoid circular dependency
+	indexOps *IndexOperations
 }
 
 // DatabaseProvider abstracts the mongo.Database for testability.
@@ -90,7 +90,8 @@ func NewDocumentRepository(db DatabaseProvider, eventBus *eventbus.EventBus, log
 	// Use bridge adapters for atomic and index ops
 	repo.atomicOps = NewAtomicOperations(NewCollectionUpdaterAdapter(repo.documentsCol))
 	repo.projectDbOps = NewProjectDatabaseOperations(repo)
-	repo.databaseOps = NewDatabaseOperations(repo)
+	// Remove circular dependency - implement database operations directly
+	// repo.databaseOps = NewDatabaseOperations(repo)
 	repo.indexOps = NewIndexOperations(
 		NewIndexCollectionAdapter(repo.indexesCol),
 		NewDocumentCollectionAdapter(repo.documentsCol),
@@ -345,27 +346,153 @@ func (r *DocumentRepository) ListProjects(ctx context.Context, ownerEmail string
 
 // CreateDatabase creates a new database
 func (r *DocumentRepository) CreateDatabase(ctx context.Context, projectID string, database *model.Database) error {
-	return r.databaseOps.CreateDatabase(ctx, projectID, database)
+	if database == nil {
+		return sharedErrors.NewValidationError("Database cannot be nil")
+	}
+
+	// Validate required fields
+	if projectID == "" {
+		return sharedErrors.NewValidationError("Project ID is required")
+	}
+	if database.DatabaseID == "" {
+		return sharedErrors.NewValidationError("Database ID is required")
+	}
+
+	// Set timestamps
+	database.CreatedAt = time.Now()
+	database.UpdatedAt = database.CreatedAt
+
+	// Create the database document in MongoDB
+	_, err := r.db.Collection("databases").InsertOne(ctx, database)
+	if err != nil {
+		if mongo.IsDuplicateKeyError(err) {
+			return sharedErrors.NewConflictError(fmt.Sprintf("Database '%s' already exists in project '%s'", database.DatabaseID, projectID))
+		}
+		return fmt.Errorf("failed to create database '%s': %w", database.DatabaseID, err)
+	}
+
+	r.logger.Info(ctx, "Database created successfully", map[string]interface{}{
+		"projectID":  projectID,
+		"databaseID": database.DatabaseID,
+	})
+
+	return nil
 }
 
 // GetDatabase retrieves a database by ID
 func (r *DocumentRepository) GetDatabase(ctx context.Context, projectID, databaseID string) (*model.Database, error) {
-	return r.databaseOps.GetDatabase(ctx, projectID, databaseID)
+	if projectID == "" || databaseID == "" {
+		return nil, sharedErrors.NewValidationError("Project ID and Database ID are required")
+	}
+
+	filter := bson.M{
+		"project_id":  projectID,
+		"database_id": databaseID,
+	}
+
+	var database model.Database
+	err := r.db.Collection("databases").FindOne(ctx, filter).Decode(&database)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, sharedErrors.NewNotFoundError(fmt.Sprintf("Database '%s' not found in project '%s'", databaseID, projectID))
+		}
+		return nil, fmt.Errorf("failed to get database '%s': %w", databaseID, err)
+	}
+
+	return &database, nil
 }
 
 // UpdateDatabase updates a database
 func (r *DocumentRepository) UpdateDatabase(ctx context.Context, projectID string, database *model.Database) error {
-	return r.databaseOps.UpdateDatabase(ctx, projectID, database)
+	if database == nil {
+		return sharedErrors.NewValidationError("Database cannot be nil")
+	}
+	if projectID == "" || database.DatabaseID == "" {
+		return sharedErrors.NewValidationError("Project ID and Database ID are required")
+	}
+
+	filter := bson.M{
+		"project_id":  projectID,
+		"database_id": database.DatabaseID,
+	}
+
+	// Update timestamp
+	database.UpdatedAt = time.Now()
+
+	update := bson.M{"$set": database}
+
+	result, err := r.db.Collection("databases").UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("failed to update database '%s': %w", database.DatabaseID, err)
+	}
+
+	if result.MatchedCount == 0 {
+		return sharedErrors.NewNotFoundError(fmt.Sprintf("Database '%s' not found in project '%s'", database.DatabaseID, projectID))
+	}
+
+	r.logger.Info(ctx, "Database updated successfully", map[string]interface{}{
+		"projectID":  projectID,
+		"databaseID": database.DatabaseID,
+	})
+
+	return nil
 }
 
 // DeleteDatabase deletes a database by ID
 func (r *DocumentRepository) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
-	return r.databaseOps.DeleteDatabase(ctx, projectID, databaseID)
+	if projectID == "" || databaseID == "" {
+		return sharedErrors.NewValidationError("Project ID and Database ID are required")
+	}
+
+	filter := bson.M{
+		"project_id":  projectID,
+		"database_id": databaseID,
+	}
+
+	result, err := r.db.Collection("databases").DeleteOne(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("failed to delete database '%s': %w", databaseID, err)
+	}
+
+	if result.DeletedCount == 0 {
+		return sharedErrors.NewNotFoundError(fmt.Sprintf("Database '%s' not found in project '%s'", databaseID, projectID))
+	}
+
+	r.logger.Info(ctx, "Database deleted successfully", map[string]interface{}{
+		"projectID":  projectID,
+		"databaseID": databaseID,
+	})
+
+	return nil
 }
 
 // ListDatabases lists all databases in a project
 func (r *DocumentRepository) ListDatabases(ctx context.Context, projectID string) ([]*model.Database, error) {
-	return r.databaseOps.ListDatabases(ctx, projectID)
+	if projectID == "" {
+		return nil, sharedErrors.NewValidationError("Project ID is required")
+	}
+
+	filter := bson.M{"project_id": projectID}
+	cursor, err := r.db.Collection("databases").Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list databases for project '%s': %w", projectID, err)
+	}
+	defer cursor.Close(ctx)
+
+	var databases []*model.Database
+	for cursor.Next(ctx) {
+		var database model.Database
+		if err := cursor.Decode(&database); err != nil {
+			return nil, fmt.Errorf("failed to decode database: %w", err)
+		}
+		databases = append(databases, &database)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("cursor error while listing databases: %w", err)
+	}
+
+	return databases, nil
 }
 
 // --- Index Operations ---
