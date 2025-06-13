@@ -5,11 +5,35 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"firestore-clone/internal/firestore/domain/model"
 )
+
+// MockProjectDatabaseProvider implements DatabaseProvider for testing with correct interface
+type MockProjectDatabaseProvider struct {
+	collections map[string]CollectionInterface
+}
+
+func NewMockProjectDatabaseProvider() *MockProjectDatabaseProvider {
+	return &MockProjectDatabaseProvider{
+		collections: make(map[string]CollectionInterface),
+	}
+}
+
+func (m *MockProjectDatabaseProvider) Collection(name string) CollectionInterface {
+	if col, exists := m.collections[name]; exists {
+		return col
+	}
+	// Create a new mock collection if it doesn't exist
+	col := &MockProjectCollection{}
+	m.collections[name] = col
+	return col
+}
+
+func (m *MockProjectDatabaseProvider) Client() interface{} {
+	return nil // Return nil for mock
+}
 
 // MockProjectCollection implements CollectionInterface for project tests
 type MockProjectCollection struct{}
@@ -44,33 +68,13 @@ func (m *MockProjectCollection) FindOneAndUpdate(ctx context.Context, filter int
 	return &MockSingleResult{}
 }
 
-// MockDatabaseProvider implements DatabaseProvider for testing
-type MockDatabaseProvider struct {
-	collections map[string]*mongo.Collection
-}
-
-func NewMockDatabaseProvider() *MockDatabaseProvider {
-	return &MockDatabaseProvider{
-		collections: make(map[string]*mongo.Collection),
-	}
-}
-
-func (m *MockDatabaseProvider) Collection(name string, opts ...*options.CollectionOptions) *mongo.Collection {
-	// Return nil for mock - the ProjectDatabaseOperations will be constructed differently for tests
-	return nil
-}
-
-func (m *MockDatabaseProvider) Client() *mongo.Client {
-	return nil
-}
-
 // newTestProjectDatabaseOperations creates a ProjectDatabaseOperations for testing
 func newTestProjectDatabaseOperations() *ProjectDatabaseOperations {
 	// Create a mock DocumentRepository with CollectionInterface implementations
 	mockRepo := &DocumentRepository{
 		documentsCol:   &MockProjectCollection{},
 		collectionsCol: &MockProjectCollection{},
-		db:             NewMockDatabaseProvider(),
+		db:             NewMockProjectDatabaseProvider(),
 	}
 
 	// Para pruebas, solo se requiere la dependencia repo

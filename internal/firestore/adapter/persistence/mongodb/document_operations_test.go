@@ -47,7 +47,7 @@ func (m *mockCollectionWithOptions) FindOneAndUpdate(ctx context.Context, filter
 
 // TestDocumentOperations_CreateAndGetDocument tests creating and retrieving a document.
 func TestDocumentOperations_CreateAndGetDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	projectID := "p1"
@@ -71,7 +71,7 @@ func TestDocumentOperations_CreateAndGetDocument(t *testing.T) {
 
 // TestDocumentOperations_UpdateDocument tests updating a document.
 func TestDocumentOperations_UpdateDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	projectID := "p1"
@@ -95,7 +95,7 @@ func TestDocumentOperations_UpdateDocument(t *testing.T) {
 
 // TestDocumentOperations_DeleteDocument tests deleting a document.
 func TestDocumentOperations_DeleteDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	projectID := "p1"
@@ -116,7 +116,7 @@ func TestDocumentOperations_DeleteDocument(t *testing.T) {
 
 // TestDocumentOperations_GetDocumentByPath tests retrieving a document by path.
 func TestDocumentOperations_GetDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	path := "projects/p1/databases/d1/documents/c1/doc1"
@@ -143,7 +143,7 @@ func TestDocumentOperations_GetDocumentByPath(t *testing.T) {
 
 // TestDocumentOperations_ListDocuments tests listing documents in a collection.
 func TestDocumentOperations_ListDocuments(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	projectID := "p1"
@@ -162,7 +162,7 @@ func TestDocumentOperations_ListDocuments(t *testing.T) {
 
 // TestDocumentOperations_SetDocument tests setting (create or update) a document.
 func TestDocumentOperations_SetDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	projectID := "p1"
@@ -204,7 +204,7 @@ func TestDocumentOperations_CreateDocumentByPath(t *testing.T) {
 
 // TestDocumentOperations_UpdateDocumentByPath tests updating a document by path.
 func TestDocumentOperations_UpdateDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	path := "projects/p1/databases/d1/documents/c1/doc2"
@@ -222,7 +222,7 @@ func TestDocumentOperations_UpdateDocumentByPath(t *testing.T) {
 
 // TestDocumentOperations_DeleteDocumentByPath tests deleting a document by path.
 func TestDocumentOperations_DeleteDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
+	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	ctx := context.Background()
 	path := "projects/p1/databases/d1/documents/c1/doc2"

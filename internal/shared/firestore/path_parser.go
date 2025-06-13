@@ -319,3 +319,26 @@ func AppendToPath(basePath, segment string) string {
 	}
 	return basePath + "/" + segment
 }
+
+// FirestorePathSimple holds the main Firestore path components (for compatibility)
+type FirestorePathSimple struct {
+	Project    string
+	Database   string
+	Collection string
+	Document   string
+}
+
+// ToFirestorePathSimple extracts the first collection/document from PathInfo for Firestore compatibility.
+func (pi *PathInfo) ToFirestorePathSimple() *FirestorePathSimple {
+	fps := &FirestorePathSimple{
+		Project:  pi.ProjectID,
+		Database: pi.DatabaseID,
+	}
+	if len(pi.Segments) > 0 {
+		fps.Collection = pi.Segments[0]
+	}
+	if len(pi.Segments) > 1 {
+		fps.Document = pi.Segments[1]
+	}
+	return fps
+}

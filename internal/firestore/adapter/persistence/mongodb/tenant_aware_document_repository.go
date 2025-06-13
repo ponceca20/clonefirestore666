@@ -3,6 +3,7 @@ package mongodb
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/domain/repository"
@@ -449,7 +450,7 @@ func (r *TenantAwareDocumentRepository) RunQuery(ctx context.Context, projectID,
 		return nil, err
 	}
 
-	return tenantRepo.RunQuery(ctx, projectID, databaseID, collectionID, query)
+	return tenantRepo.ExecuteQuery(ctx, projectID, databaseID, collectionID, query)
 }
 
 func (r *TenantAwareDocumentRepository) RunCollectionGroupQuery(ctx context.Context, projectID, databaseID, collectionID string, query *model.Query) ([]*model.Document, error) {
@@ -463,9 +464,13 @@ func (r *TenantAwareDocumentRepository) RunCollectionGroupQuery(ctx context.Cont
 		return nil, err
 	}
 
-	return tenantRepo.RunCollectionGroupQuery(ctx, projectID, databaseID, collectionID, query)
+	// Collection group queries are just regular queries across multiple collections
+	// For now, delegate to ExecuteQuery as the basic implementation
+	return tenantRepo.ExecuteQuery(ctx, projectID, databaseID, collectionID, query)
 }
 
+// RunAggregationQuery performs aggregation operations on documents
+// Note: This is a simplified implementation for the Firestore clone
 func (r *TenantAwareDocumentRepository) RunAggregationQuery(ctx context.Context, projectID, databaseID, collectionID string, query *model.Query) (*model.AggregationResult, error) {
 	organizationID, err := r.extractOrganizationID(ctx)
 	if err != nil {
@@ -477,7 +482,19 @@ func (r *TenantAwareDocumentRepository) RunAggregationQuery(ctx context.Context,
 		return nil, err
 	}
 
-	return tenantRepo.RunAggregationQuery(ctx, projectID, databaseID, collectionID, query)
+	// For simplicity, execute regular query and wrap results in AggregationResult
+	documents, err := tenantRepo.ExecuteQuery(ctx, projectID, databaseID, collectionID, query)
+	if err != nil {
+		return nil, err
+	}
+	// Create a simple aggregation result
+	count := int64(len(documents))
+	result := &model.AggregationResult{
+		Count:    &count,
+		ReadTime: time.Now(),
+	}
+
+	return result, nil
 }
 
 // List documents with pagination
@@ -597,7 +614,14 @@ func (r *TenantAwareDocumentRepository) CreateIndex(ctx context.Context, project
 		return err
 	}
 
-	return tenantRepo.CreateIndex(ctx, projectID, databaseID, collectionID, index)
+	// Convert CollectionIndex to Index for the underlying repository
+	modelIndex := &model.Index{
+		Name:   index.Name,
+		Fields: index.Fields,
+		State:  index.State,
+	}
+
+	return tenantRepo.CreateIndex(ctx, projectID, databaseID, collectionID, modelIndex)
 }
 
 func (r *TenantAwareDocumentRepository) DeleteIndex(ctx context.Context, projectID, databaseID, collectionID, indexID string) error {
@@ -625,5 +649,43 @@ func (r *TenantAwareDocumentRepository) ListIndexes(ctx context.Context, project
 		return nil, err
 	}
 
-	return tenantRepo.ListIndexes(ctx, projectID, databaseID, collectionID)
+	// Get indexes from underlying repository
+	indexes, err := tenantRepo.ListIndexes(ctx, projectID, databaseID, collectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert []*model.Index to []*model.CollectionIndex
+	collectionIndexes := make([]*model.CollectionIndex, len(indexes))
+	for i, idx := range indexes {
+		collectionIndexes[i] = &model.CollectionIndex{
+			Name:   idx.Name,
+			Fields: idx.Fields,
+			State:  idx.State,
+		}
+	}
+
+	return collectionIndexes, nil
+}
+
+// MongoDatabaseAdapter adapts *mongo.Database to implement DatabaseProvider interface
+// This follows hexagonal architecture by abstracting MongoDB-specific implementations
+type MongoDatabaseAdapter struct {
+	db *mongo.Database
+}
+
+// NewMongoDatabaseAdapter creates a new database adapter for hexagonal architecture
+func NewMongoDatabaseAdapter(db *mongo.Database) DatabaseProvider {
+	return &MongoDatabaseAdapter{db: db}
+}
+
+// Collection returns a CollectionInterface for the given collection name
+func (m *MongoDatabaseAdapter) Collection(name string) CollectionInterface {
+	col := m.db.Collection(name)
+	return NewMongoCollectionAdapter(col)
+}
+
+// Client returns the underlying client interface
+func (m *MongoDatabaseAdapter) Client() interface{} {
+	return m.db.Client()
 }

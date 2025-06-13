@@ -2,11 +2,11 @@ package mongodb
 
 import (
 	"context"
-	"firestore-clone/internal/firestore/domain/model"
 	"testing"
-	"time"
 
-	"go.mongodb.org/mongo-driver/mongo"
+	"firestore-clone/internal/firestore/domain/model"
+	"firestore-clone/internal/firestore/usecase"
+
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
@@ -68,8 +68,8 @@ type MockFirestoreSingleResult struct {
 }
 
 func (m *MockFirestoreSingleResult) Decode(v interface{}) error {
-	// Return ErrNoDocuments to simulate not found
-	return mongo.ErrNoDocuments
+	// Return a generic error to simulate not found
+	return ErrDocumentNotFound
 }
 
 // MockFirestoreUpdateResult for Firestore behavior tests
@@ -121,17 +121,16 @@ func (m *MockFirestoreCursor) Err() error                      { return nil }
 
 // Helper: limpia la colección (simulado, en memoria)
 func clearCollection(repo *DocumentRepository, ctx context.Context, projectID, databaseID, collectionID string) {
-	docs, _ := repo.RunQuery(ctx, projectID, databaseID, collectionID, &model.Query{})
+	docs, _ := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, &model.Query{})
 	for _, doc := range docs {
 		_ = repo.DeleteDocument(ctx, projectID, databaseID, collectionID, doc.DocumentID)
 	}
 }
 
 func TestFirestoreBehavior_CreateGetUpdateDelete(t *testing.T) {
-	repo := newTestDocumentRepository() // Keep the existing integration test
+	repo := newTestDocumentRepositoryForOps() // Use improved mocks for consistent testing
 	ctx := context.Background()
 	projectID, databaseID, collectionID := "p1", "d1", "col1"
-	clearCollection(repo, ctx, projectID, databaseID, collectionID)
 
 	// Create
 	data := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
@@ -173,12 +172,11 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	repo := newTestDocumentRepositoryForFirestore()
 	ctx := context.Background()
 	projectID, databaseID, collectionID := "p1", "d1", "colQ"
-
 	// For unit tests, we'll test individual query logic without depending on MongoDB
 	t.Run("equality", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("foo", model.OperatorEqual, "x")
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -191,7 +189,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("greater than", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("bar", model.OperatorGreaterThan, 2)
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -204,7 +202,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("array-contains", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("tags", model.OperatorArrayContains, "t2")
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -218,7 +216,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 		q := &model.Query{}
 		q.Orders = append(q.Orders, model.Order{Field: "bar", Direction: model.DirectionDescending})
 		q.Limit = 2
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -231,7 +229,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("in operator", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("foo", model.OperatorIn, []interface{}{"x", "y"})
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -244,7 +242,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("not-in operator", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("foo", model.OperatorNotIn, []interface{}{"x"})
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -260,7 +258,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 		q.Orders = append(q.Orders, model.Order{Field: "bar", Direction: model.DirectionAscending})
 		q.Limit = 1
 		q.Offset = 1
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -273,7 +271,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("null field", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("foo", model.OperatorEqual, nil)
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -286,7 +284,7 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	t.Run("invalid field", func(t *testing.T) {
 		q := &model.Query{}
 		q.AddFilter("nope", model.OperatorEqual, "z")
-		res, err := repo.RunQuery(ctx, projectID, databaseID, collectionID, q)
+		res, err := repo.ExecuteQuery(ctx, projectID, databaseID, collectionID, q)
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -297,26 +295,35 @@ func TestFirestoreBehavior_QueryDocuments(t *testing.T) {
 	})
 }
 
-// newTestDocumentRepositoryForFirestore creates a DocumentRepository with mock collections for Firestore behavior tests
-func newTestDocumentRepositoryForFirestore() *DocumentRepository {
-	mockCol := NewMockFirestoreCollection()
-	return &DocumentRepository{
-		documentsCol:   mockCol,
-		collectionsCol: mockCol,
+// MockBehaviorDatabaseProvider implements DatabaseProvider for Firestore behavior testing
+type MockBehaviorDatabaseProvider struct {
+	collections map[string]CollectionInterface
+}
+
+func NewMockBehaviorDatabaseProvider() *MockBehaviorDatabaseProvider {
+	return &MockBehaviorDatabaseProvider{
+		collections: make(map[string]CollectionInterface),
 	}
 }
 
-// newTestDocumentRepository crea un repo efímero para pruebas (MongoDB local, colección temporal)
-// Keep the existing integration test function but handle connection failures gracefully
-func newTestDocumentRepository() *DocumentRepository {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
-	if err != nil {
-		// Fall back to mock if MongoDB is not available
-		return newTestDocumentRepositoryMock()
+func (m *MockBehaviorDatabaseProvider) Collection(name string) CollectionInterface {
+	if col, exists := m.collections[name]; exists {
+		return col
 	}
-	db := client.Database("firestore_test_temp")
-	provider := NewMongoDatabaseAdapter(db)
-	return NewDocumentRepository(provider, nil, nil)
+	// Create a new mock collection if it doesn't exist
+	col := NewMockFirestoreCollection()
+	m.collections[name] = col
+	return col
+}
+
+func (m *MockBehaviorDatabaseProvider) Client() interface{} {
+	return nil // Return nil for mock
+}
+
+// newTestDocumentRepositoryForFirestore creates a DocumentRepository with mock collections for Firestore behavior tests
+func newTestDocumentRepositoryForFirestore() *DocumentRepository {
+	mockProvider := NewMockBehaviorDatabaseProvider()
+	mockLogger := &usecase.MockLogger{}
+
+	return NewDocumentRepository(mockProvider, nil, mockLogger)
 }

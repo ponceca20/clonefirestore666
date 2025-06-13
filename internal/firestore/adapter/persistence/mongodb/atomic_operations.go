@@ -6,32 +6,22 @@ import (
 	"time"
 
 	"firestore-clone/internal/firestore/domain/model"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// CollectionUpdater abstracts the UpdateOne method for testability
-// (If using mockery for mocks, otherwise define manually in test)
-//
-//go:generate mockery --name=CollectionUpdater --output=./mocks --case=underscore
-type CollectionUpdater interface {
-	UpdateOne(ctx context.Context, filter interface{}, update interface{}, opts ...*options.UpdateOptions) (*mongo.UpdateResult, error)
-}
+// AtomicOperations maneja operaciones atómicas sobre documentos
+// Ahora acepta un DatabaseProvider hexagonal para colecciones dinámicas
+// DatabaseProvider debe retornar CollectionInterface
 
-// AtomicOperations handles atomic document operations
-// Accepts a CollectionUpdater for testability
 type AtomicOperations struct {
-	documentsCol CollectionUpdater
+	db DatabaseProvider
 }
 
-// NewAtomicOperations creates a new AtomicOperations instance
-func NewAtomicOperations(col CollectionUpdater) *AtomicOperations {
-	return &AtomicOperations{documentsCol: col}
+// NewAtomicOperations crea una nueva instancia de AtomicOperations con DatabaseProvider
+func NewAtomicOperations(db DatabaseProvider) *AtomicOperations {
+	return &AtomicOperations{db: db}
 }
 
-// AtomicIncrement performs an atomic increment operation on a numeric field
+// AtomicIncrement realiza un incremento atómico sobre un campo numérico
 func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value int64) error {
 	if projectID == "" {
 		return fmt.Errorf("project ID cannot be empty")
@@ -49,273 +39,278 @@ func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, datab
 		return fmt.Errorf("field name cannot be empty")
 	}
 
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	// Build the update operation
-	updateDoc := bson.M{
-		"$inc": bson.M{
+	updateDoc := map[string]interface{}{
+		"$inc": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field): value,
 		},
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic increment
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic increment: %w", err)
 	}
-
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
-
 	return nil
 }
 
-// AtomicArrayUnion performs an atomic array union operation
+// AtomicArrayUnion realiza una operación atómica de unión de arreglos
 func (a *AtomicOperations) AtomicArrayUnion(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
 	if elements == nil {
 		return fmt.Errorf("elements array cannot be nil")
 	}
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	// Convert FieldValue elements to interface{} for MongoDB
+	// Convertir elementos FieldValue a interface{} para MongoDB
 	var values []interface{}
 	for _, element := range elements {
 		values = append(values, element.Value)
 	}
 
-	// Build the update operation
-	updateDoc := bson.M{
-		"$addToSet": bson.M{
-			fmt.Sprintf("fields.%s.value", field): bson.M{
+	// Construir la operación de actualización
+	updateDoc := map[string]interface{}{
+		"$addToSet": map[string]interface{}{
+			fmt.Sprintf("fields.%s.value", field): map[string]interface{}{
 				"$each": values,
 			},
 		},
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic array union
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la unión atómica de arreglos
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic array union: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
+	if result.Matched() == 0 {
 		return fmt.Errorf("document not found")
 	}
 
 	return nil
 }
 
-// AtomicArrayRemove performs an atomic array remove operation
+// AtomicArrayRemove realiza una operación atómica de eliminación de arreglos
 func (a *AtomicOperations) AtomicArrayRemove(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	// Convert FieldValue elements to interface{} for MongoDB
+	// Convertir elementos FieldValue a interface{} para MongoDB
 	var values []interface{}
 	for _, element := range elements {
 		values = append(values, element.Value)
 	}
 
-	// Build the update operation
-	updateDoc := bson.M{
-		"$pullAll": bson.M{
+	// Construir la operación de actualización
+	updateDoc := map[string]interface{}{
+		"$pullAll": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field): values,
 		},
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic array remove
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la eliminación atómica de arreglos
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic array remove: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
 }
 
-// AtomicServerTimestamp sets a field to the current server timestamp
+// AtomicServerTimestamp establece un campo con la marca de tiempo actual del servidor
 func (a *AtomicOperations) AtomicServerTimestamp(ctx context.Context, projectID, databaseID, collectionID, documentID, field string) error {
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	// Build the update operation
-	updateDoc := bson.M{
-		"$set": bson.M{
+	// Construir la operación de actualización
+	updateDoc := map[string]interface{}{
+		"$set": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field):      time.Now(),
 			fmt.Sprintf("fields.%s.value_type", field): model.FieldTypeTimestamp,
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic server timestamp
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la operación atómica de marca de tiempo del servidor
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to set atomic server timestamp: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
 }
 
-// AtomicDelete performs an atomic field deletion
+// AtomicDelete realiza una eliminación atómica de campos
 func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, databaseID, collectionID, documentID string, fields []string) error {
 	if len(fields) == 0 {
 		return fmt.Errorf("fields list cannot be empty")
 	}
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	// Build the unset operation for each field
-	unsetFields := bson.M{}
+	// Construir la operación unset para cada campo
+	unsetFields := map[string]interface{}{}
 	for _, field := range fields {
 		unsetFields[fmt.Sprintf("fields.%s", field)] = ""
 	}
 
-	updateDoc := bson.M{
+	updateDoc := map[string]interface{}{
 		"$unset": unsetFields,
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic field deletion
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la eliminación atómica de campos
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic field deletion: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
 }
 
-// AtomicSetIfEmpty sets a field only if it doesn't exist or is empty
+// AtomicSetIfEmpty establece un campo solo si no existe o está vacío
 func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value *model.FieldValue) error {
 	if value == nil {
 		return fmt.Errorf("value cannot be nil")
 	}
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
-		"$or": []bson.M{
-			{fmt.Sprintf("fields.%s", field): bson.M{"$exists": false}},
+		"$or": []map[string]interface{}{
+			{fmt.Sprintf("fields.%s", field): map[string]interface{}{"$exists": false}},
 			{fmt.Sprintf("fields.%s.value", field): nil},
 			{fmt.Sprintf("fields.%s.value", field): ""},
 		},
 	}
 
-	updateDoc := bson.M{
-		"$set": bson.M{
+	updateDoc := map[string]interface{}{
+		"$set": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field):      value.Value,
 			fmt.Sprintf("fields.%s.value_type", field): value.ValueType,
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the conditional set operation
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la operación de establecimiento condicional
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic set if empty: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
+	if result.Matched() == 0 {
 		return fmt.Errorf("document not found or field already has value")
 	}
 
 	return nil
 }
 
-// AtomicMaximum sets a field to the maximum of its current value and the provided value
+// AtomicMaximum establece un campo al máximo entre su valor actual y el valor proporcionado
 func (a *AtomicOperations) AtomicMaximum(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value interface{}) error {
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	updateDoc := bson.M{
-		"$max": bson.M{
+	updateDoc := map[string]interface{}{
+		"$max": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field): value,
 		},
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic maximum operation
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la operación atómica de máximo
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic maximum: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
 
 	return nil
 }
 
-// AtomicMinimum sets a field to the minimum of its current value and the provided value
+// AtomicMinimum establece un campo al mínimo entre su valor actual y el valor proporcionado
 func (a *AtomicOperations) AtomicMinimum(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value interface{}) error {
-	filter := bson.M{
+	filter := map[string]interface{}{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 		"document_id":   documentID,
 	}
 
-	updateDoc := bson.M{
-		"$min": bson.M{
+	updateDoc := map[string]interface{}{
+		"$min": map[string]interface{}{
 			fmt.Sprintf("fields.%s.value", field): value,
 		},
-		"$set": bson.M{
+		"$set": map[string]interface{}{
 			"update_time": time.Now(),
 		},
 	}
-	// Execute the atomic minimum operation
-	result, err := a.documentsCol.UpdateOne(ctx, filter, updateDoc)
+	// Ejecutar la operación atómica de mínimo
+	targetCollection := a.db.Collection(collectionID)
+	result, err := targetCollection.UpdateOne(ctx, filter, updateDoc)
 	if err != nil {
 		return fmt.Errorf("failed to perform atomic minimum: %w", err)
 	}
 
-	if result.MatchedCount == 0 {
-		return ErrDocumentNotFound
+	if result.Matched() == 0 {
+		return fmt.Errorf("document not found")
 	}
 
 	return nil

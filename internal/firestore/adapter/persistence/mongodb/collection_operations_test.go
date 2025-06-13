@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"firestore-clone/internal/firestore/domain/model"
+	"firestore-clone/internal/firestore/usecase"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -14,6 +15,7 @@ func newTestDocumentRepositoryForCollections() *DocumentRepository {
 	return &DocumentRepository{
 		collectionsCol: &mockCollection{},
 		documentsCol:   &mockCollection{},
+		logger:         &usecase.MockLogger{}, // Use the existing MockLogger from usecase package
 	}
 }
 
