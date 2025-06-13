@@ -11,31 +11,56 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newTestFirestoreUsecase() FirestoreUsecaseInterface {
+	return NewFirestoreUsecase(
+		NewMockFirestoreRepo(), // Mock aislado por test
+		nil,
+		nil,
+		&MockLogger{},
+	)
+}
+
 func TestCreateProject(t *testing.T) {
 	uc := newTestFirestoreUsecase()
+	uniqueProjectID := "p_createproject_" + t.Name()
+	uniqueOrgID := "org_createproject_" + t.Name()
 	proj, err := uc.CreateProject(context.Background(), CreateProjectRequest{
-		Project: &model.Project{ProjectID: "p1"},
+		Project: &model.Project{ProjectID: uniqueProjectID, OrganizationID: uniqueOrgID},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "p1", proj.ProjectID)
+	assert.Equal(t, uniqueProjectID, proj.ProjectID)
 }
 
 func TestGetProject(t *testing.T) {
 	uc := newTestFirestoreUsecase()
-	proj, err := uc.GetProject(context.Background(), GetProjectRequest{
-		ProjectID: "p1",
+	projID := "p1"
+	orgID := "org1"
+	// Insertar el proyecto antes de intentar obtenerlo
+	_, err := uc.CreateProject(context.Background(), CreateProjectRequest{
+		Project: &model.Project{ProjectID: projID, OrganizationID: orgID},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "p1", proj.ProjectID)
+	proj, err := uc.GetProject(context.Background(), GetProjectRequest{
+		ProjectID: projID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, projID, proj.ProjectID)
 }
 
 func TestUpdateProject(t *testing.T) {
 	uc := newTestFirestoreUsecase()
-	proj, err := uc.UpdateProject(context.Background(), UpdateProjectRequest{
-		Project: &model.Project{ProjectID: "p1"},
+	projID := "p1"
+	orgID := "org1"
+	// Insertar el proyecto antes de intentar actualizarlo
+	_, err := uc.CreateProject(context.Background(), CreateProjectRequest{
+		Project: &model.Project{ProjectID: projID, OrganizationID: orgID},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "p1", proj.ProjectID)
+	proj, err := uc.UpdateProject(context.Background(), UpdateProjectRequest{
+		Project: &model.Project{ProjectID: projID},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, projID, proj.ProjectID)
 }
 
 func TestDeleteProject(t *testing.T) {

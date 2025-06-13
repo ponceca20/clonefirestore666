@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"math/rand"
 	stdhttp "net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/require"
@@ -18,13 +20,24 @@ import (
 	"firestore-clone/internal/firestore/usecase"
 )
 
+// RandString genera un string aleatorio de n caracteres válidos para IDs
+func RandString(n int) string {
+	letters := []rune("abcdefghijklmnopqrstuvwxyz0123456789")
+	rand.Seed(time.Now().UnixNano())
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
+}
+
 // Integration test for document routes
 func TestDocumentRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 
 	// Usar el Usecase real con el mock centralizado para cumplir la interfaz
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{},
+		usecase.NewMockFirestoreRepo(),
 		nil, // securityRepo mock
 		nil, // queryEngine mock
 		&usecase.MockLogger{},
@@ -124,7 +137,7 @@ func TestCollectionRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{},
+		usecase.NewMockFirestoreRepo(),
 		nil, // securityRepo mock
 		nil, // queryEngine mock
 		&usecase.MockLogger{},
@@ -192,7 +205,7 @@ func TestCollectionRoutes_Integration(t *testing.T) {
 func TestIndexRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{}, nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -225,7 +238,7 @@ func TestIndexRoutes_Integration(t *testing.T) {
 func TestBatchWriteRoute_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{}, nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -245,7 +258,7 @@ func TestBatchWriteRoute_Integration(t *testing.T) {
 func TestTransactionRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{}, nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -383,14 +396,14 @@ func (r *InMemoryProjectRepo) ListProjects(_ context.Context, _ string) ([]*mode
 
 func TestProjectRoutes_Integration(t *testing.T) {
 	app := fiber.New()
-	mockRepo := NewInMemoryProjectRepo()
+	mockRepo := usecase.NewMockFirestoreRepo() // Use the correct mock constructor with package prefix
 	uc := usecase.NewFirestoreUsecase(
 		mockRepo, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
 
-	orgID, projectID := "org-ponceca", "project01"
+	orgID, projectID := "org-ponceca", "project-ponceca"
 	basePath := "/organizations/" + orgID + "/projects"
 
 	// --- Create Project ---
@@ -432,16 +445,25 @@ func TestProjectRoutes_Integration(t *testing.T) {
 func TestDatabaseRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{}, nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{}, // Use the correct mock constructor with package prefix
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
 
-	orgID, projectID, databaseID := "org-ponceca", "project01", "database01"
+	orgID, projectID := "org-ponceca", "project-ponceca"
+	databaseID := "dbponceca" + RandString(8) // Genera un ID único y válido
 	basePath := "/organizations/" + orgID + "/projects/" + projectID + "/databases"
 
+	// --- Crear el proyecto necesario antes de la base de datos ---
+	createProjectBody := `{ "project": { "projectId": "` + projectID + `", "organizationId": "` + orgID + `", "displayName": "Test Project" } }`
+	createProjectReq := httptest.NewRequest(stdhttp.MethodPost, "/organizations/"+orgID+"/projects", strings.NewReader(createProjectBody))
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectResp, err := app.Test(createProjectReq)
+	require.NoError(t, err)
+	require.Equal(t, stdhttp.StatusCreated, createProjectResp.StatusCode)
+
 	// --- Create Database ---
-	createBody := `{ "projectId": "p1", "database": { "databaseId": "` + databaseID + `", "name": "Test DB" } }`
+	createBody := `{ "projectId": "` + projectID + `", "database": { "databaseId": "` + databaseID + `", "name": "Test DB" } }`
 	createReq := httptest.NewRequest(stdhttp.MethodPost, basePath, strings.NewReader(createBody))
 	createReq.Header.Set("Content-Type", "application/json")
 	createResp, err := app.Test(createReq)
@@ -461,7 +483,7 @@ func TestDatabaseRoutes_Integration(t *testing.T) {
 	require.Equal(t, stdhttp.StatusOK, getResp.StatusCode)
 
 	// --- Update Database ---
-	updateBody := `{ "projectId": "p1", "database": { "databaseId": "` + databaseID + `", "name": "Updated DB" } }`
+	updateBody := `{ "projectId": "` + projectID + `", "database": { "databaseId": "` + databaseID + `", "name": "Updated DB" } }`
 	updateReq := httptest.NewRequest(stdhttp.MethodPut, basePath+"/"+databaseID, strings.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateResp, err := app.Test(updateReq)

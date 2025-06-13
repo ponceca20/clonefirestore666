@@ -9,9 +9,11 @@ import (
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/domain/repository"
+	sharedErrors "firestore-clone/internal/shared/errors"
 	"firestore-clone/internal/shared/eventbus"
 	"firestore-clone/internal/shared/firestore"
 	"firestore-clone/internal/shared/logger"
+	"firestore-clone/internal/shared/utils"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -41,6 +43,7 @@ type DocumentRepository struct {
 	collectionOps *CollectionOperations
 	atomicOps     *AtomicOperations
 	projectDbOps  *ProjectDatabaseOperations
+	databaseOps   *DatabaseOperations
 	indexOps      *IndexOperations
 }
 
@@ -87,6 +90,7 @@ func NewDocumentRepository(db DatabaseProvider, eventBus *eventbus.EventBus, log
 	// Use bridge adapters for atomic and index ops
 	repo.atomicOps = NewAtomicOperations(NewCollectionUpdaterAdapter(repo.documentsCol))
 	repo.projectDbOps = NewProjectDatabaseOperations(repo)
+	repo.databaseOps = NewDatabaseOperations(repo)
 	repo.indexOps = NewIndexOperations(
 		NewIndexCollectionAdapter(repo.indexesCol),
 		NewDocumentCollectionAdapter(repo.documentsCol),
@@ -94,6 +98,9 @@ func NewDocumentRepository(db DatabaseProvider, eventBus *eventbus.EventBus, log
 	)
 	return repo
 }
+
+// DocumentRepository implements ProjectRepository for project operations
+var _ ProjectRepository = (*DocumentRepository)(nil)
 
 // --- Batch Operations ---
 
@@ -214,56 +221,151 @@ func (r *DocumentRepository) AtomicServerTimestamp(ctx context.Context, projectI
 
 // --- Project Operations ---
 
-// CreateProject creates a new project
+// CreateProject creates a new project in the 'projects' collection with organization isolation
 func (r *DocumentRepository) CreateProject(ctx context.Context, project *model.Project) error {
-	return r.projectDbOps.CreateProject(ctx, project)
+	// Validate required fields
+	if project.ProjectID == "" {
+		return sharedErrors.NewValidationError("Project ID is required")
+	}
+	if project.OrganizationID == "" {
+		return sharedErrors.NewValidationError("Organization ID is required")
+	}
+
+	// Extract organization ID from context for additional validation
+	contextOrgID, err := utils.GetOrganizationIDFromContext(ctx)
+	if err != nil {
+		return fmt.Errorf("organization context required for project creation: %w", err)
+	}
+
+	// Ensure the organization ID in the project matches the context
+	if project.OrganizationID != contextOrgID {
+		return sharedErrors.NewValidationError("Project organization ID must match the request context")
+	}
+
+	// Set timestamps
+	project.CreatedAt = time.Now()
+	project.UpdatedAt = project.CreatedAt
+
+	// Insert the project
+	_, err = r.db.Collection("projects").InsertOne(ctx, project)
+	if err != nil {
+		// Check for duplicate key error (project already exists)
+		if mongo.IsDuplicateKeyError(err) {
+			return sharedErrors.NewConflictError(fmt.Sprintf("Project '%s' already exists in organization '%s'", project.ProjectID, project.OrganizationID))
+		}
+		return fmt.Errorf("failed to create project '%s': %w", project.ProjectID, err)
+	}
+
+	return nil
 }
 
-// GetProject retrieves a project by ID
+// GetProject retrieves a project by ProjectID within the organization context
 func (r *DocumentRepository) GetProject(ctx context.Context, projectID string) (*model.Project, error) {
-	return r.projectDbOps.GetProject(ctx, projectID)
+	// Extract organization ID from context for tenant isolation
+	organizationID, err := utils.GetOrganizationIDFromContext(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("organization context required for project access: %w", err)
+	}
+
+	// Filter by both project_id and organization_id for proper tenant isolation
+	filter := bson.M{
+		"project_id":      projectID,
+		"organization_id": organizationID,
+	}
+
+	var project model.Project
+	err = r.db.Collection("projects").FindOne(ctx, filter).Decode(&project)
+	if err == mongo.ErrNoDocuments {
+		return nil, sharedErrors.NewNotFoundError(fmt.Sprintf("Project '%s' in organization '%s'", projectID, organizationID))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve project '%s': %w", projectID, err)
+	}
+
+	return &project, nil
 }
 
-// UpdateProject updates a project
+// UpdateProject actualiza los datos de un proyecto
 func (r *DocumentRepository) UpdateProject(ctx context.Context, project *model.Project) error {
-	return r.projectDbOps.UpdateProject(ctx, project)
+	if project.ProjectID == "" || project.OrganizationID == "" {
+		return errors.New("projectID y organizationID son requeridos")
+	}
+	project.UpdatedAt = time.Now()
+	filter := bson.M{"project_id": project.ProjectID}
+	update := bson.M{"$set": project}
+	res, err := r.db.Collection("projects").UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("error al actualizar proyecto: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return errors.New("proyecto no encontrado para actualizar")
+	}
+	return nil
 }
 
-// DeleteProject deletes a project by ID
+// DeleteProject elimina un proyecto por su ProjectID
 func (r *DocumentRepository) DeleteProject(ctx context.Context, projectID string) error {
-	return r.projectDbOps.DeleteProject(ctx, projectID)
+	filter := bson.M{"project_id": projectID}
+	res, err := r.db.Collection("projects").DeleteOne(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("error al eliminar proyecto: %w", err)
+	}
+	if res.DeletedCount == 0 {
+		return errors.New("proyecto no encontrado para eliminar")
+	}
+	return nil
 }
 
-// ListProjects lists all projects for an owner
+// ListProjects lista todos los proyectos de una organización o de un owner
 func (r *DocumentRepository) ListProjects(ctx context.Context, ownerEmail string) ([]*model.Project, error) {
-	return r.projectDbOps.ListProjects(ctx, ownerEmail)
+	filter := bson.M{}
+	if ownerEmail != "" {
+		filter["owner_email"] = ownerEmail
+	}
+	cursor, err := r.db.Collection("projects").Find(ctx, filter)
+	if err != nil {
+		return nil, fmt.Errorf("error al listar proyectos: %w", err)
+	}
+	defer cursor.Close(ctx)
+	var projects []*model.Project
+	for cursor.Next(ctx) {
+		var project model.Project
+		if err := cursor.Decode(&project); err != nil {
+			return nil, fmt.Errorf("error al decodificar proyecto: %w", err)
+		}
+		projects = append(projects, &project)
+	}
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("error en el cursor de proyectos: %w", err)
+	}
+	return projects, nil
 }
 
 // --- Database Operations ---
 
 // CreateDatabase creates a new database
 func (r *DocumentRepository) CreateDatabase(ctx context.Context, projectID string, database *model.Database) error {
-	return r.projectDbOps.CreateDatabase(ctx, projectID, database)
+	return r.databaseOps.CreateDatabase(ctx, projectID, database)
 }
 
 // GetDatabase retrieves a database by ID
 func (r *DocumentRepository) GetDatabase(ctx context.Context, projectID, databaseID string) (*model.Database, error) {
-	return r.projectDbOps.GetDatabase(ctx, projectID, databaseID)
+	return r.databaseOps.GetDatabase(ctx, projectID, databaseID)
 }
 
 // UpdateDatabase updates a database
 func (r *DocumentRepository) UpdateDatabase(ctx context.Context, projectID string, database *model.Database) error {
-	return r.projectDbOps.UpdateDatabase(ctx, projectID, database)
+	return r.databaseOps.UpdateDatabase(ctx, projectID, database)
 }
 
 // DeleteDatabase deletes a database by ID
 func (r *DocumentRepository) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
-	return r.projectDbOps.DeleteDatabase(ctx, projectID, databaseID)
+	return r.databaseOps.DeleteDatabase(ctx, projectID, databaseID)
 }
 
 // ListDatabases lists all databases in a project
 func (r *DocumentRepository) ListDatabases(ctx context.Context, projectID string) ([]*model.Database, error) {
-	return r.projectDbOps.ListDatabases(ctx, projectID)
+	return r.databaseOps.ListDatabases(ctx, projectID)
 }
 
 // --- Index Operations ---

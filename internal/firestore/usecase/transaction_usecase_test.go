@@ -39,13 +39,3 @@ func TestRunBatchWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, resp.WriteResults, 1)
 }
-
-// Agrega un helper local para los tests de transacciones, usando los mocks centralizados.
-func newTestFirestoreUsecase() FirestoreUsecaseInterface {
-	return NewFirestoreUsecase(
-		&MockFirestoreRepo{},
-		nil, // securityRepo mock si es necesario
-		nil, // queryEngine mock si es necesario
-		&MockLogger{},
-	)
-}

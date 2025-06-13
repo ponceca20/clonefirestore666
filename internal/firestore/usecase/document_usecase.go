@@ -17,17 +17,14 @@ func (uc *FirestoreUsecase) CreateDocument(ctx context.Context, req CreateDocume
 		"collectionID", req.CollectionID,
 		"documentID", req.DocumentID)
 
-	// Convert request fields to FieldValue map
 	fields := make(map[string]*model.FieldValue)
 	for key, value := range req.Data {
 		fields[key] = model.NewFieldValue(value)
 	}
 
-	// Validate hierarchy and create if needed
 	if err := uc.validateFirestoreHierarchy(ctx, req.ProjectID, req.DatabaseID, req.CollectionID); err != nil {
 		return nil, err
 	}
-
 	document, err := uc.firestoreRepo.CreateDocument(ctx, req.ProjectID, req.DatabaseID, req.CollectionID, req.DocumentID, fields)
 	if err != nil {
 		uc.logger.Error("Failed to create document", "error", err)
@@ -61,7 +58,6 @@ func (uc *FirestoreUsecase) UpdateDocument(ctx context.Context, req UpdateDocume
 		"collectionID", req.CollectionID,
 		"documentID", req.DocumentID)
 
-	// Convert request fields to FieldValue map
 	fields := make(map[string]*model.FieldValue)
 	for key, value := range req.Data {
 		fields[key] = model.NewFieldValue(value)

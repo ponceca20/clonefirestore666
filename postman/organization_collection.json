@@ -1,0 +1,174 @@
+{
+    "info": {
+        "name": "Organization API",
+        "_postman_id": "YOUR_COLLECTION_ID_OPTIONAL",
+        "description": "Collection for testing Firestore Clone Organization Endpoints",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Create Organization",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"organizationId\": \"{{newOrganizationId}}\",\n    \"displayName\": \"New Awesome Org\",\n    \"description\": \"A test organization created via Postman.\",\n    \"billingEmail\": \"billing@awesome.org\",\n    \"adminEmails\": [\"admin@awesome.org\"],\n    \"defaultLocation\": \"us-central1\"\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/organizations",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations"
+                    ]
+                },
+                "description": "Creates a new organization. Set `newOrganizationId` in variables or environment."
+            },
+            "response": []
+        },
+        {
+            "name": "List Organizations",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/organizations",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations"
+                    ]
+                },
+                "description": "Retrieves a list of all organizations."
+            },
+            "response": []
+        },
+        {
+            "name": "Get Organization",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations",
+                        "{{organizationId}}"
+                    ]
+                },
+                "description": "Retrieves a specific organization by its ID. Set `organizationId` in variables or environment."
+            },
+            "response": []
+        },
+        {
+            "name": "Update Organization",
+            "request": {
+                "method": "PUT",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"displayName\": \"Updated Awesome Org Name\",\n    \"description\": \"Updated description for the organization.\",\n    \"billingEmail\": \"billing.updated@awesome.org\",\n    \"adminEmails\": [\"admin@awesome.org\", \"superadmin@awesome.org\"],\n    \"defaultLocation\": \"europe-west1\",\n    \"state\": \"ACTIVE\"\n}",
+                    "options": {
+                        "raw": {
+                            "language": "json"
+                        }
+                    }
+                },
+                "url": {
+                    "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations",
+                        "{{organizationId}}"
+                    ]
+                },
+                "description": "Updates an existing organization. Set `organizationId` in variables or environment."
+            },
+            "response": []
+        },
+        {
+            "name": "Delete Organization",
+            "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/organizations/{{organizationId}}",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations",
+                        "{{organizationId}}"
+                    ]
+                },
+                "description": "Deletes a specific organization by its ID. Set `organizationId` in variables or environment."
+            },
+            "response": []
+        },
+        {
+            "name": "Get Organization Usage",
+            "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                    "raw": "{{baseUrl}}/organizations/{{organizationId}}/usage",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "organizations",
+                        "{{organizationId}}",
+                        "usage"
+                    ]
+                },
+                "description": "Retrieves usage statistics for a specific organization. Set `organizationId` in variables or environment."
+            },
+            "response": []
+        }
+    ],
+    "auth": {
+        "type": "noauth"
+    },
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:8080",
+            "type": "string",
+            "description": "The base URL of your API. Override in your Postman environment for different stages (dev, prod, etc.). Example: http://localhost:8080/api/v1"
+        },
+        {
+            "key": "organizationId",
+            "value": "default-org-123",
+            "type": "string",
+            "description": "ID of an existing organization for GET, PUT, DELETE, and usage requests."
+        },
+        {
+            "key": "newOrganizationId",
+            "value": "new-org-{{$timestamp}}",
+            "type": "string",
+            "description": "ID for creating a new organization. Uses Postman's dynamic variable $timestamp for uniqueness."
+        }
+    ]
+}

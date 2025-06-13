@@ -77,8 +77,20 @@ func NewIndexOperations(indexesCol IndexCollection, documentsCol DocumentCollect
 // CreateIndex creates a new index for a collection
 func (i *IndexOperations) CreateIndex(ctx context.Context, projectID, databaseID, collectionID string, index *model.CollectionIndex) error {
 	now := time.Now()
+	if projectID == "" {
+		return fmt.Errorf("project ID cannot be empty")
+	}
+	if databaseID == "" {
+		return fmt.Errorf("database ID cannot be empty")
+	}
+	if collectionID == "" {
+		return fmt.Errorf("collection ID cannot be empty")
+	}
 	if index == nil {
 		return fmt.Errorf("index cannot be nil")
+	}
+	if len(index.Fields) == 0 {
+		return fmt.Errorf("fields cannot be empty")
 	}
 
 	// Check if index already exists
@@ -176,12 +188,23 @@ func (i *IndexOperations) DeleteIndex(ctx context.Context, projectID, databaseID
 
 // ListIndexes lists all indexes for a collection
 func (i *IndexOperations) ListIndexes(ctx context.Context, projectID, databaseID, collectionID string) ([]*model.CollectionIndex, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("project ID cannot be empty")
+	}
+	if databaseID == "" {
+		return nil, fmt.Errorf("database ID cannot be empty")
+	}
+	if collectionID == "" {
+		return nil, fmt.Errorf("collection ID cannot be empty")
+	}
+
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
 		"collection_id": collectionID,
 	}
 
+	// Call Find to get custom index documents (for compatibility with test mocks)
 	cursor, err := i.indexesCol.Find(ctx, filter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list indexes: %w", err)
@@ -194,7 +217,6 @@ func (i *IndexOperations) ListIndexes(ctx context.Context, projectID, databaseID
 		if err := cursor.Decode(&indexDoc); err != nil {
 			continue // Skip invalid indexes
 		}
-
 		index := &model.CollectionIndex{
 			Name:   indexDoc.Name,
 			Fields: convertFromIndexFields(indexDoc.Fields),

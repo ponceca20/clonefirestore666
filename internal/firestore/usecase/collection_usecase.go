@@ -14,13 +14,11 @@ func (uc *FirestoreUsecase) CreateCollection(ctx context.Context, req CreateColl
 		"databaseID", req.DatabaseID,
 		"collectionID", req.CollectionID)
 
-	// Validate hierarchy
 	if err := uc.validateFirestoreHierarchy(ctx, req.ProjectID, req.DatabaseID, ""); err != nil {
 		return nil, err
 	}
 
 	collection := model.NewCollection(req.ProjectID, req.DatabaseID, req.CollectionID)
-
 	err := uc.firestoreRepo.CreateCollection(ctx, req.ProjectID, req.DatabaseID, collection)
 	if err != nil {
 		uc.logger.Error("Failed to create collection", "error", err)

@@ -1,1493 +1,1383 @@
 {
-	"info": {
-		"_postman_id": "b2c3d4e5-f6g7-8901-2345-678901bcdefg",
-		"name": "Firestore Clone Documents API",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		"description": "Collection for managing documents, collections, indexes, batch operations, transactions and atomic operations in the Firestore Clone API. Routes follow the pattern: /api/v1/organizations/{organizationId}/projects/{projectId}/databases/{databaseId}/..."
-	},
-	"item": [
-		{
-			"name": "Documents",
-			"item": [
-				{
-					"name": "Create Document",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"if (pm.response.code === 201) {",
-									"    pm.test(\"Response has documentID\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('documentID');",
-									"        pm.expect(jsonData.documentID).to.be.a('string');",
-									"        pm.expect(jsonData.documentID).to.not.be.empty;",
-									"        ",
-									"        // Set documentId for use in other requests",
-									"        pm.environment.set(\"currentDocumentId\", jsonData.documentID);",
-									"        console.log(\"documentID set to: \" + jsonData.documentID);",
-									"    });",
-									"    ",
-									"    pm.test(\"Response has required fields\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('collectionID');",
-									"        pm.expect(jsonData).to.have.property('projectID');",
-									"        pm.expect(jsonData).to.have.property('databaseID');",
-									"        pm.expect(jsonData).to.have.property('createdAt');",
-									"        pm.expect(jsonData).to.have.property('updatedAt');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"// Generate a unique document ID for this request",
-									"pm.environment.set(\"newDocumentId\", \"doc-\" + Date.now());"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"name\": \"My Document\",\n  \"description\": \"A test document created via Postman\",\n  \"category\": \"test\",\n  \"tags\": [\"postman\", \"test\", \"firestore\"],\n  \"metadata\": {\n    \"author\": \"Postman Test\",\n    \"version\": \"1.0\",\n    \"public\": true\n  },\n  \"content\": {\n    \"text\": \"This is the document content\",\n    \"format\": \"plain\"\n  },\n  \"priority\": 1,\n  \"active\": true,\n  \"createdBy\": \"postman-user\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?documentId={{newDocumentId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}"
-							],
-							"query": [
-								{
-									"key": "documentId",
-									"value": "{{newDocumentId}}",
-									"description": "Optional document ID"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Get Document",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Response has document data\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('documentID');",
-									"        pm.expect(jsonData).to.have.property('collectionID');",
-									"        pm.expect(jsonData).to.have.property('data');",
-									"        pm.expect(jsonData.data).to.be.an('object');",
-									"    });",
-									"    ",
-									"    pm.test(\"Document has expected fields\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData.data).to.have.property('name');",
-									"        pm.expect(jsonData.data).to.have.property('category');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Update Document",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Document was updated\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('documentID');",
-									"        pm.expect(jsonData).to.have.property('updatedAt');",
-									"        pm.expect(jsonData.data).to.have.property('description');",
-									"        pm.expect(jsonData.data.description).to.include('UPDATED');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"description\": \"UPDATED: Document modified via Postman\",\n  \"category\": \"test-updated\",\n  \"priority\": 2,\n  \"lastModified\": \"{{$timestamp}}\",\n  \"metadata\": {\n    \"author\": \"Postman Test\",\n    \"version\": \"1.1\",\n    \"public\": false,\n    \"updated\": true\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}?updateMask=description,category,priority,lastModified,metadata",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}"
-							],
-							"query": [
-								{
-									"key": "updateMask",
-									"value": "description,category,priority,lastModified,metadata",
-									"description": "Fields to update"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "List Documents",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Response has documents array\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('documents');",
-									"        pm.expect(jsonData.documents).to.be.an('array');",
-									"        pm.expect(jsonData).to.have.property('count');",
-									"        pm.expect(jsonData.count).to.be.a('number');",
-									"    });",
-									"    ",
-									"    pm.test(\"Documents have required structure\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        if (jsonData.documents.length > 0) {",
-									"            var firstDoc = jsonData.documents[0];",
-									"            pm.expect(firstDoc).to.have.property('documentID');",
-									"            pm.expect(firstDoc).to.have.property('collectionID');",
-									"        }",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?pageSize=10&orderBy=createdAt&showMissing=false",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}"
-							],
-							"query": [
-								{
-									"key": "pageSize",
-									"value": "10",
-									"description": "Number of documents to return"
-								},
-								{
-									"key": "orderBy",
-									"value": "createdAt",
-									"description": "Field to order by"
-								},
-								{
-									"key": "showMissing",
-									"value": "false",
-									"description": "Include missing documents"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Query Documents",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Query response has documents\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('documents');",
-									"        pm.expect(jsonData.documents).to.be.an('array');",
-									"        pm.expect(jsonData).to.have.property('count');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"structuredQuery\": {\n    \"from\": [{\n      \"collectionId\": \"{{collectionId}}\"\n    }],\n    \"where\": {\n      \"fieldFilter\": {\n        \"field\": {\n          \"fieldPath\": \"category\"\n        },\n        \"op\": \"EQUAL\",\n        \"value\": {\n          \"stringValue\": \"test\"\n        }\n      }\n    },\n    \"orderBy\": [{\n      \"field\": {\n        \"fieldPath\": \"createdAt\"\n      },\n      \"direction\": \"DESCENDING\"\n    }],\n    \"limit\": 10\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/{{collectionId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"query",
-								"{{collectionId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Document",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 204\", function () {",
-									"    pm.response.to.have.status(204);",
-									"});",
-									"",
-									"pm.test(\"Response body is empty\", function () {",
-									"    pm.expect(pm.response.text()).to.be.empty;",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Document CRUD operations"
-		},
-		{
-			"name": "Collections",
-			"item": [
-				{
-					"name": "Create Collection",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"if (pm.response.code === 201) {",
-									"    pm.test(\"Collection was created\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('collectionID');",
-									"        pm.expect(jsonData).to.have.property('projectID');",
-									"        pm.expect(jsonData).to.have.property('databaseID');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"collectionId\": \"{{collectionId}}\",\n  \"displayName\": \"Test Collection\",\n  \"metadata\": {\n    \"description\": \"A test collection created via Postman\",\n    \"category\": \"test\",\n    \"created_by\": \"postman\"\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Get Collection",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Collection data is returned\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('collectionID');",
-									"        pm.expect(jsonData.collectionID).to.equal(pm.environment.get('collectionId'));",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "List Collections",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Collections list is returned\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('collections');",
-									"        pm.expect(jsonData.collections).to.be.an('array');",
-									"        pm.expect(jsonData).to.have.property('count');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections?pageSize=20",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections"
-							],
-							"query": [
-								{
-									"key": "pageSize",
-									"value": "20",
-									"description": "Number of collections to return"
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Update Collection",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Collection was updated\", function () {",
-									"    pm.expect(pm.response.code).to.equal(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"displayName\": \"Updated Test Collection\",\n  \"metadata\": {\n    \"description\": \"Updated description via Postman\",\n    \"category\": \"test-updated\",\n    \"modified_by\": \"postman\",\n    \"last_modified\": \"{{$timestamp}}\"\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "List Subcollections",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Subcollections response structure\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('subcollections');",
-									"        pm.expect(jsonData.subcollections).to.be.an('array');",
-									"        pm.expect(jsonData).to.have.property('count');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{subDocumentId}}/subcollections",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{subDocumentId}}",
-								"subcollections"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Collection",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 204\", function () {",
-									"    pm.response.to.have.status(204);",
-									"});",
-									"",
-									"pm.test(\"Response body is empty\", function () {",
-									"    pm.expect(pm.response.text()).to.be.empty;",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Collection management operations"
-		},
-		{
-			"name": "Indexes",
-			"item": [
-				{
-					"name": "Create Index",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 201\", function () {",
-									"    pm.response.to.have.status(201);",
-									"});",
-									"",
-									"if (pm.response.code === 201) {",
-									"    pm.test(\"Index was created\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('name');",
-									"        pm.environment.set(\"createdIndexName\", jsonData.name);",
-									"        console.log(\"Index created: \" + jsonData.name);",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"index\": {\n    \"collection\": \"{{collectionId}}\",\n    \"fields\": [\n      {\n        \"fieldPath\": \"category\",\n        \"order\": \"ASCENDING\"\n      },\n      {\n        \"fieldPath\": \"priority\",\n        \"order\": \"DESCENDING\"\n      }\n    ],\n    \"queryScope\": \"COLLECTION\",\n    \"state\": \"READY\"\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}",
-								"indexes"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "List Indexes",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Indexes list is returned\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('indexes');",
-									"        pm.expect(jsonData.indexes).to.be.an('array');",
-									"        pm.expect(jsonData).to.have.property('count');",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}",
-								"indexes"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Delete Index",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 204\", function () {",
-									"    pm.response.to.have.status(204);",
-									"});",
-									"",
-									"pm.test(\"Response body is empty\", function () {",
-									"    pm.expect(pm.response.text()).to.be.empty;",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "DELETE",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes/{{indexId}}",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"collections",
-								"{{collectionId}}",
-								"indexes",
-								"{{indexId}}"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Index management operations"
-		},
-		{
-			"name": "Batch Operations",
-			"item": [
-				{
-					"name": "Batch Write",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Batch write response\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('writeResults');",
-									"        pm.expect(jsonData.writeResults).to.be.an('array');",
-									"        pm.expect(jsonData.writeResults.length).to.be.greaterThan(0);",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						},
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"// Generate unique IDs for batch operations",
-									"pm.environment.set(\"batchDoc1Id\", \"batch-doc-1-\" + Date.now());",
-									"pm.environment.set(\"batchDoc2Id\", \"batch-doc-2-\" + Date.now());",
-									"pm.environment.set(\"batchDoc3Id\", \"batch-doc-3-\" + Date.now());"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"writes\": [\n    {\n      \"operation\": \"create\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{batchDoc1Id}}\",\n        \"fields\": {\n          \"name\": {\n            \"stringValue\": \"Batch Document 1\"\n          },\n          \"type\": {\n            \"stringValue\": \"batch\"\n          },\n          \"priority\": {\n            \"integerValue\": \"1\"\n          }\n        }\n      }\n    },\n    {\n      \"operation\": \"create\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{batchDoc2Id}}\",\n        \"fields\": {\n          \"name\": {\n            \"stringValue\": \"Batch Document 2\"\n          },\n          \"type\": {\n            \"stringValue\": \"batch\"\n          },\n          \"priority\": {\n            \"integerValue\": \"2\"\n          }\n        }\n      }\n    },\n    {\n      \"operation\": \"update\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}\",\n        \"fields\": {\n          \"batchUpdated\": {\n            \"booleanValue\": true\n          },\n          \"batchTimestamp\": {\n            \"timestampValue\": \"{{$isoTimestamp}}\"\n          }\n        }\n      },\n      \"updateMask\": {\n        \"fieldPaths\": [\"batchUpdated\", \"batchTimestamp\"]\n      }\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/batchWrite",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"batchWrite"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Batch operations for multiple document changes"
-		},
-		{
-			"name": "Transactions",
-			"item": [
-				{
-					"name": "Begin Transaction",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Transaction ID returned\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('transactionId');",
-									"        pm.expect(jsonData.transactionId).to.be.a('string');",
-									"        pm.expect(jsonData.transactionId).to.not.be.empty;",
-									"        ",
-									"        // Store transaction ID for commit",
-									"        pm.environment.set(\"currentTransactionId\", jsonData.transactionId);",
-									"        console.log(\"Transaction started: \" + jsonData.transactionId);",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"options\": {\n    \"readOnly\": false,\n    \"readWrite\": {\n      \"retryTransaction\": \"\"\n    }\n  }\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/beginTransaction",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"beginTransaction"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Commit Transaction",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Transaction committed successfully\", function () {",
-									"    // Transaction commit should complete without error",
-									"    pm.expect(pm.response.code).to.equal(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"transactionId\": \"{{currentTransactionId}}\",\n  \"writes\": [\n    {\n      \"operation\": \"update\",\n      \"document\": {\n        \"name\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}\",\n        \"fields\": {\n          \"transactionUpdated\": {\n            \"booleanValue\": true\n          },\n          \"transactionTimestamp\": {\n            \"timestampValue\": \"{{$isoTimestamp}}\"\n          }\n        }\n      }\n    }\n  ]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/commit",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"commit"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Transaction management operations"
-		},
-		{
-			"name": "Atomic Operations",
-			"item": [
-				{
-					"name": "Atomic Increment",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"if (pm.response.code === 200) {",
-									"    pm.test(\"Increment response has new value\", function () {",
-									"        var jsonData = pm.response.json();",
-									"        pm.expect(jsonData).to.have.property('newValue');",
-									"        pm.expect(jsonData.newValue).to.be.a('number');",
-									"        console.log(\"New counter value: \" + jsonData.newValue);",
-									"    });",
-									"}"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"field\": \"counter\",\n  \"incrementBy\": 5\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/increment",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}",
-								"increment"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Atomic Array Union",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Array union completed\", function () {",
-									"    pm.expect(pm.response.code).to.equal(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"field\": \"tags\",\n  \"elements\": [\"atomic\", \"union\", \"postman-test\"]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayUnion",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}",
-								"arrayUnion"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Atomic Array Remove",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Array remove completed\", function () {",
-									"    pm.expect(pm.response.code).to.equal(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"field\": \"tags\",\n  \"elements\": [\"postman-test\"]\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayRemove",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}",
-								"arrayRemove"
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Atomic Server Timestamp",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Server timestamp set\", function () {",
-									"    pm.expect(pm.response.code).to.equal(200);",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Authorization",
-								"value": "Bearer {{authToken}}",
-								"type": "text"
-							},
-							{
-								"key": "X-Organization-ID",
-								"value": "{{organizationId}}",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"field\": \"lastServerUpdate\"\n}"
-						},
-						"url": {
-							"raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/serverTimestamp",
-							"host": ["{{baseUrl}}"],
-							"path": [
-								"organizations",
-								"{{organizationId}}",
-								"projects",
-								"{{projectId}}",
-								"databases",
-								"{{databaseId}}",
-								"documents",
-								"{{collectionId}}",
-								"{{documentId}}",
-								"serverTimestamp"
-							]
-						}
-					},
-					"response": []
-				}
-			],
-			"description": "Atomic field operations"
-		}
-	],
-	"event": [
-		{
-			"listen": "prerequest",
-			"script": {
-				"id": "9f0c5f4a-3b7c-4a1e-8f2a-1b3c5d7e9f0a",
-				"exec": [
-					"// Global pre-request script for Documents API",
-					"console.log('Preparing request for: ' + pm.info.requestName);",
-					"",
-					"// Ensure required environment variables are set",
-					"const requiredVars = ['baseUrl', 'organizationId', 'projectId', 'databaseId', 'collectionId'];",
-					"requiredVars.forEach(varName => {",
-					"    const value = pm.environment.get(varName);",
-					"    if (!value) {",
-					"        console.warn(`Warning: ${varName} is not set in environment`);",
-					"    }",
-					"});",
-					"",
-					"// Set default documentId if not already set",
-					"if (!pm.environment.get('documentId')) {",
-					"    pm.environment.set('documentId', 'item123');",
-					"    console.log('Set default documentId: item123');",
-					"}"
-				],
-				"type": "text/javascript"
-			}
-		},
-		{
-			"listen": "test",
-			"script": {
-				"id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-				"exec": [
-					"// Global test script for Documents API",
-					"pm.test('Response time is acceptable', function () {",
-					"    pm.expect(pm.response.responseTime).to.be.below(5000);",
-					"});",
-					"",
-					"pm.test('Content-Type header is present', function () {",
-					"    if (pm.response.code !== 204) { // Skip for No Content responses",
-					"        pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
-					"    }",
-					"});",
-					"",
-					"// Log response for debugging",
-					"console.log('Response status:', pm.response.code);",
-					"console.log('Response time:', pm.response.responseTime + 'ms');",
-					"if (pm.response.code >= 400) {",
-					"    console.log('Error response:', pm.response.text());",
-					"}"
-				],
-				"type": "text/javascript"
-			}
-		}
-	],
-	"variable": [
-		{
-			"key": "apiVersion",
-			"value": "v1",
-			"type": "string"
-		},
-		{
-			"key": "collectionName",
-			"value": "Documents API",
-			"type": "string"
-		}
-	]
+    "info": {
+        "_postman_id": "YOUR_COLLECTION_UUID_HERE",
+        "name": "Firestore Clone API",
+        "description": "Postman collection for the Firestore Clone API, including Organization, Project, Database, Collection, Document, Index, Batch, Transaction, and Atomic operations.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Organizations",
+            "item": [
+                {
+                    "name": "Create Organization",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"organizationId\": \"{{newOrganizationId}}\",\n    \"displayName\": \"New Test Organization\",\n    \"billingEmail\": \"billing@neworg.com\",\n    \"adminEmails\": [\"admin@neworg.com\"],\n    \"defaultLocation\": \"us-central1\",\n    \"description\": \"This is a new organization created via API.\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Organization",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Organizations",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations?pageSize=10&pageToken=YOUR_PAGE_TOKEN",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageSize",
+                                    "value": "10",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "pageToken",
+                                    "value": "YOUR_PAGE_TOKEN",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Organization",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"displayName\": \"Updated Test Organization Name\",\n    \"description\": \"Description has been updated.\",\n    \"adminEmails\": [\"admin@neworg.com\", \"admin2@neworg.com\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Organization",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Organization Usage",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/usage",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "usage"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Projects",
+            "item": [
+                {
+                    "name": "Create Project",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"project\": {\n        \"projectId\": \"{{newProjectId}}\",\n        \"displayName\": \"My Awesome Project\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Project",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Projects",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects?pageSize=10&pageToken=YOUR_PAGE_TOKEN",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageSize",
+                                    "value": "10",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "pageToken",
+                                    "value": "YOUR_PAGE_TOKEN",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Project",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"project\": {\n        \"displayName\": \"My Updated Awesome Project Name\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Project",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Databases",
+            "item": [
+                {
+                    "name": "Create Database",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"database\": {\n        \"databaseId\": \"{{newDatabaseId}}\",\n        \"type\": \"FIRESTORE_NATIVE\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Database",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Databases",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases?pageSize=10&pageToken=YOUR_PAGE_TOKEN",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageSize",
+                                    "value": "10",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "pageToken",
+                                    "value": "YOUR_PAGE_TOKEN",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Database",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"database\": {\n        \"type\": \"FIRESTORE_NATIVE\" \n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Database",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Collections",
+            "item": [
+                {
+                    "name": "Create Collection",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"collectionId\": \"{{newCollectionId}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Collection",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Collections",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections?pageSize=10&pageToken=YOUR_PAGE_TOKEN",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageSize",
+                                    "value": "10",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "pageToken",
+                                    "value": "YOUR_PAGE_TOKEN",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Collection",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"displayName\": \"My Updated Collection Name\",\n    \"metadata\": {\n        \"description\": \"This collection stores user profiles.\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Collection",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Subcollections",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/subcollections",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}",
+                                "subcollections"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Documents",
+            "item": [
+                {
+                    "name": "Create Document (auto-ID)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Ada Lovelace\",\n    \"born\": 1815,\n    \"occupation\": \"Mathematician\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Document (with ID)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Alan Turing\",\n    \"born\": 1912,\n    \"occupation\": \"Computer Scientist\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?documentId={{newDocId1}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "documentId",
+                                    "value": "{{newDocId1}}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Document",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Document",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"occupation\": \"Pioneer Programmer\",\n    \"nickname\": \"Enchantress of Numbers\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}?updateMask=occupation,nickname",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "updateMask",
+                                    "value": "occupation,nickname",
+                                    "description": "Comma-separated field paths to update. If not specified, all fields are replaced (PATCH behavior might differ)."
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Document",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Documents",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}?pageSize=5&orderBy=born desc&showMissing=false",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "pageSize",
+                                    "value": "5",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "pageToken",
+                                    "value": "YOUR_PAGE_TOKEN",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "orderBy",
+                                    "value": "born desc",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "showMissing",
+                                    "value": "false",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Query Documents",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"from\": [\n        {\n            \"collectionId\": \"{{collectionId}}\"\n        }\n    ],\n    \"where\": {\n        \"fieldFilter\": {\n            \"field\": {\n                \"fieldPath\": \"born\"\n            },\n            \"op\": \"LESS_THAN\",\n            \"value\": 1900\n        }\n    },\n    \"orderBy\": [\n        {\n            \"field\": {\n                \"fieldPath\": \"name\"\n            },\n            \"direction\": \"ASCENDING\"\n        }\n    ],\n    \"limit\": 10\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/{{collectionId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "query",
+                                "{{collectionId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Indexes",
+            "item": [
+                {
+                    "name": "Create Index",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"index\": {\n        \"collection\": \"{{collectionId}}\",\n        \"fields\": [\n            {\n                \"fieldPath\": \"name\",\n                \"order\": \"ASCENDING\"\n            },\n            {\n                \"fieldPath\": \"born\",\n                \"order\": \"DESCENDING\"\n            }\n        ],\n        \"queryScope\": \"COLLECTION\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}",
+                                "indexes"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Indexes",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}",
+                                "indexes"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Index",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/collections/{{collectionId}}/indexes/{{indexId}}",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "collections",
+                                "{{collectionId}}",
+                                "indexes",
+                                "{{indexId}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Batch Operations",
+            "item": [
+                {
+                    "name": "Batch Write",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"writes\": [\n        {\n            \"operation\": \"CREATE\",\n            \"documentPath\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{newDocId1}}\",\n            \"data\": {\n                \"message\": \"Hello from batch create!\",\n                \"timestamp\": \"2024-01-01T00:00:00Z\"\n            }\n        },\n        {\n            \"operation\": \"UPDATE\",\n            \"documentPath\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{existingDocId}}\",\n            \"data\": {\n                \"status\": \"updated by batch\"\n            },\n            \"updateMask\": [\"status\"]\n        },\n        {\n            \"operation\": \"DELETE\",\n            \"documentPath\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{docToDeleteId}}\"\n        }\n    ]\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/batchWrite",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "batchWrite"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Transactions",
+            "item": [
+                {
+                    "name": "Begin Transaction",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"options\": {\n        \"readWrite\": {}\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/beginTransaction",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "beginTransaction"
+                            ]
+                        },
+                        "event": [
+                            {
+                                "listen": "test",
+                                "script": {
+                                    "exec": [
+                                        "var jsonData = pm.response.json();",
+                                        "pm.environment.set(\"transactionId\", jsonData.transaction);"
+                                    ],
+                                    "type": "text/javascript"
+                                }
+                            }
+                        ]
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Commit Transaction",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"transaction\": \"{{transactionId}}\",\n    \"writes\": [\n        {\n            \"operation\": \"UPDATE\",\n            \"documentPath\": \"projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{existingDocId}}\",\n            \"data\": {\n                \"status\": \"updated in transaction\",\n                \"transaction_field\": true\n            }\n        }\n    ]\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/commit",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "commit"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Atomic Operations",
+            "item": [
+                {
+                    "name": "Atomic Increment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"field\": \"counter\",\n    \"incrementBy\": 1\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/increment",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}",
+                                "increment"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Atomic Array Union",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"field\": \"tags\",\n    \"elements\": [\"new_tag\", \"another_tag\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayUnion",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}",
+                                "arrayUnion"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Atomic Array Remove",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"field\": \"tags\",\n    \"elements\": [\"old_tag\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/arrayRemove",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}",
+                                "arrayRemove"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Atomic Server Timestamp",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"field\": \"updatedAt\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{host}}/api/v1/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/{{collectionId}}/{{documentId}}/serverTimestamp",
+                            "host": [
+                                "{{host}}"
+                            ],
+                            "path": [
+                                "api",
+                                "v1",
+                                "organizations",
+                                "{{organizationId}}",
+                                "projects",
+                                "{{projectId}}",
+                                "databases",
+                                "{{databaseId}}",
+                                "documents",
+                                "{{collectionId}}",
+                                "{{documentId}}",
+                                "serverTimestamp"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "host",
+            "value": "http://localhost:3030",
+            "type": "string"
+        },
+        {
+            "key": "organizationId",
+            "value": "my-default-org",
+            "type": "string"
+        },
+        {
+            "key": "newOrganizationId",
+            "value": "new-org-from-postman",
+            "type": "string"
+        },
+        {
+            "key": "projectId",
+            "value": "my-default-project",
+            "type": "string"
+        },
+        {
+            "key": "newProjectId",
+            "value": "new-proj-from-postman",
+            "type": "string"
+        },
+        {
+            "key": "databaseId",
+            "value": "(default)",
+            "type": "string"
+        },
+        {
+            "key": "newDatabaseId",
+            "value": "new-db-from-postman",
+            "type": "string"
+        },
+        {
+            "key": "collectionId",
+            "value": "users",
+            "type": "string"
+        },
+        {
+            "key": "newCollectionId",
+            "value": "products",
+            "type": "string"
+        },
+        {
+            "key": "documentId",
+            "value": "user123",
+            "type": "string"
+        },
+        {
+            "key": "newDocId1",
+            "value": "doc-auto-generated-or-custom",
+            "type": "string"
+        },
+        {
+            "key": "existingDocId",
+            "value": "some-existing-document-id",
+            "type": "string"
+        },
+        {
+            "key": "docToDeleteId",
+            "value": "document-to-be-deleted",
+            "type": "string"
+        },
+        {
+            "key": "indexId",
+            "value": "my-custom-index",
+            "type": "string"
+        },
+        {
+            "key": "transactionId",
+            "value": "",
+            "type": "string",
+            "description": "This will be set by the 'Begin Transaction' request's test script."
+        }
+    ]
 }

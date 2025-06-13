@@ -3,6 +3,7 @@ package http
 import (
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/shared/errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -10,7 +11,8 @@ import (
 
 // Project handlers implementation following single responsibility principle
 func (h *HTTPHandler) CreateProject(c *fiber.Ctx) error {
-	h.Log.Debug("Creating project via HTTP")
+	h.Log.Debug("Creating project via HTTP",
+		"organizationId", c.Params("organizationId"))
 
 	var req usecase.CreateProjectRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -21,9 +23,47 @@ func (h *HTTPHandler) CreateProject(c *fiber.Ctx) error {
 		})
 	}
 
+	// Validate required fields
+	if req.Project == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_project",
+			"message": "Project configuration is required",
+		})
+	}
+
+	// Extract organization ID from URL path and ensure it matches request body
+	organizationID := c.Params("organizationId")
+	if organizationID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_organization_id",
+			"message": "Organization ID is required in URL path",
+		})
+	}
+
+	// Set organization ID from URL path to ensure consistency
+	req.Project.OrganizationID = organizationID
+
 	project, err := h.FirestoreUC.CreateProject(c.UserContext(), req)
 	if err != nil {
-		h.Log.Error("Failed to create project", "error", err)
+		h.Log.Error("Failed to create project", "error", err,
+			"organizationId", organizationID,
+			"projectID", req.Project.ProjectID)
+
+		// Handle specific error types with appropriate HTTP status codes
+		if errors.IsValidation(err) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "validation_failed",
+				"message": err.Error(),
+			})
+		}
+
+		if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.ErrorTypeConflict {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error":   "project_already_exists",
+				"message": err.Error(),
+			})
+		}
+
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":   "create_project_failed",
 			"message": err.Error(),

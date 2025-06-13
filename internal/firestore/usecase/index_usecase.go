@@ -15,12 +15,10 @@ func (uc *FirestoreUsecase) CreateIndex(ctx context.Context, req CreateIndexRequ
 		"databaseID", req.DatabaseID,
 		"indexName", req.Index.Name)
 
-	// Validate index configuration
 	if err := uc.validateIndex(&req.Index); err != nil {
 		return nil, fmt.Errorf("invalid index: %w", err)
 	}
 
-	// Convert to collection index for repository
 	collIdx := model.CollectionIndex{
 		Name:   req.Index.Name,
 		Fields: req.Index.Fields,
@@ -43,8 +41,6 @@ func (uc *FirestoreUsecase) DeleteIndex(ctx context.Context, req DeleteIndexRequ
 		"databaseID", req.DatabaseID,
 		"indexName", req.IndexName)
 
-	// Note: Collection ID is empty since DeleteIndexRequest doesn't include it
-	// This follows the original implementation pattern
 	err := uc.firestoreRepo.DeleteIndex(ctx, req.ProjectID, req.DatabaseID, "", req.IndexName)
 	if err != nil {
 		uc.logger.Error("Failed to delete index", "error", err)
@@ -67,7 +63,6 @@ func (uc *FirestoreUsecase) ListIndexes(ctx context.Context, req ListIndexesRequ
 		return nil, fmt.Errorf("failed to list indexes: %w", err)
 	}
 
-	// Convert collection indexes to model indexes
 	indexes := make([]model.Index, len(collIndexes))
 	for i, idx := range collIndexes {
 		indexes[i] = model.Index{

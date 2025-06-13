@@ -33,6 +33,22 @@ func NewAtomicOperations(col CollectionUpdater) *AtomicOperations {
 
 // AtomicIncrement performs an atomic increment operation on a numeric field
 func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value int64) error {
+	if projectID == "" {
+		return fmt.Errorf("project ID cannot be empty")
+	}
+	if databaseID == "" {
+		return fmt.Errorf("database ID cannot be empty")
+	}
+	if collectionID == "" {
+		return fmt.Errorf("collection ID cannot be empty")
+	}
+	if documentID == "" {
+		return fmt.Errorf("document ID cannot be empty")
+	}
+	if field == "" {
+		return fmt.Errorf("field name cannot be empty")
+	}
+
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
@@ -64,6 +80,9 @@ func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, datab
 
 // AtomicArrayUnion performs an atomic array union operation
 func (a *AtomicOperations) AtomicArrayUnion(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
+	if elements == nil {
+		return fmt.Errorf("elements array cannot be nil")
+	}
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
@@ -170,6 +189,9 @@ func (a *AtomicOperations) AtomicServerTimestamp(ctx context.Context, projectID,
 
 // AtomicDelete performs an atomic field deletion
 func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, databaseID, collectionID, documentID string, fields []string) error {
+	if len(fields) == 0 {
+		return fmt.Errorf("fields list cannot be empty")
+	}
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,
@@ -204,6 +226,9 @@ func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, database
 
 // AtomicSetIfEmpty sets a field only if it doesn't exist or is empty
 func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value *model.FieldValue) error {
+	if value == nil {
+		return fmt.Errorf("value cannot be nil")
+	}
 	filter := bson.M{
 		"project_id":    projectID,
 		"database_id":   databaseID,

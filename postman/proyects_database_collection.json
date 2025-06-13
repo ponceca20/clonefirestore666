@@ -1,0 +1,352 @@
+{
+	"info": {
+		"_postman_id": "YOUR_COLLECTION_ID",
+		"name": "Firestore Clone - Projects and Databases",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"description": "Collection for managing Projects and Databases in Firestore Clone. Assumes {{baseURL}}, {{organizationId}}, {{projectID}}, and {{databaseID}} are set in your Postman environment."
+	},
+	"item": [
+		{
+			"name": "Projects",
+			"item": [
+				{
+					"name": "Create Project",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"project\": {\n        \"projectID\": \"{{projectID_new}}\",\n        \"displayName\": \"My New Awesome Project\",\n        \"defaultLocation\": \"us-central1\",\n        \"labels\": {\n            \"env\": \"development\",\n            \"team\": \"alpha\"\n        }\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects"
+							]
+						},
+						"description": "Creates a new project within the specified organization. \n\n**Environment Variables Used:**\n- `{{baseURL}}` (e.g., `http://localhost:3030/api/v1`)\n- `{{organizationId}}` (e.g., `my-org-123`)\n- `{{projectID_new}}` (e.g., `new-project-001`) - Set this in your environment or replace in body."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Project",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}"
+							]
+						},
+						"description": "Retrieves a specific project by its ID. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}` (e.g., `existing-project-001`)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Project",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"project\": {\n        \"displayName\": \"My Updated Awesome Project\",\n        \"defaultLocation\": \"europe-west1\",\n        \"labels\": {\n            \"env\": \"staging\",\n            \"team\": \"beta\"\n        }\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}"
+							]
+						},
+						"description": "Updates an existing project. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Project",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}"
+							]
+						},
+						"description": "Deletes a specific project. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`"
+					},
+					"response": []
+				},
+				{
+					"name": "List Projects",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects"
+							]
+						},
+						"description": "Lists all projects within the specified organization. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`"
+					},
+					"response": []
+				}
+			],
+			"description": "Operations related to projects."
+		},
+		{
+			"name": "Databases",
+			"item": [
+				{
+					"name": "Create Database",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"database\": {\n        \"databaseID\": \"{{databaseID_new}}\",\n        \"locationId\": \"us-central1\",\n        \"type\": \"FIRESTORE_NATIVE\",\n        \"concurrencyMode\": \"OPTIMISTIC\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}/databases",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}",
+								"databases"
+							]
+						},
+						"description": "Creates a new database within the specified project. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`\n- `{{databaseID_new}}` (e.g., `(default)` or `my-custom-db`) - Set this in your environment or replace in body."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Database",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}/databases/{{databaseID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}",
+								"databases",
+								"{{databaseID}}"
+							]
+						},
+						"description": "Retrieves a specific database by its ID. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`\n- `{{databaseID}}` (e.g., `(default)`)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Database",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"database\": {\n        \"locationId\": \"europe-west1\",\n        \"type\": \"FIRESTORE_NATIVE\",\n        \"concurrencyMode\": \"PESSIMISTIC\"\n    }\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}/databases/{{databaseID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}",
+								"databases",
+								"{{databaseID}}"
+							]
+						},
+						"description": "Updates an existing database. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`\n- `{{databaseID}}`"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Database",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}/databases/{{databaseID}}",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}",
+								"databases",
+								"{{databaseID}}"
+							]
+						},
+						"description": "Deletes a specific database. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`\n- `{{databaseID}}`"
+					},
+					"response": []
+				},
+				{
+					"name": "List Databases",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseURL}}/organizations/{{organizationId}}/projects/{{projectID}}/databases",
+							"host": [
+								"{{baseURL}}"
+							],
+							"path": [
+								"organizations",
+								"{{organizationId}}",
+								"projects",
+								"{{projectID}}",
+								"databases"
+							]
+						},
+						"description": "Lists all databases within the specified project. \n\n**Environment Variables Used:**\n- `{{baseURL}}`\n- `{{organizationId}}`\n- `{{projectID}}`"
+					},
+					"response": []
+				}
+			],
+			"description": "Operations related to databases within a project."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseURL",
+			"value": "http://localhost:3030/api/v1",
+			"type": "string",
+			"description": "Base URL for the API (e.g., http://localhost:3030/api/v1)"
+		},
+		{
+			"key": "organizationId",
+			"value": "my-default-org",
+			"type": "string",
+			"description": "ID of the organization"
+		},
+		{
+			"key": "projectID",
+			"value": "my-default-project",
+			"type": "string",
+			"description": "ID of the project"
+		},
+		{
+			"key": "projectID_new",
+			"value": "new-project-example",
+			"type": "string",
+			"description": "ID for a new project to be created"
+		},
+		{
+			"key": "databaseID",
+			"value": "(default)",
+			"type": "string",
+			"description": "ID of the database (e.g., (default))"
+		},
+		{
+			"key": "databaseID_new",
+			"value": "new-db-example",
+			"type": "string",
+			"description": "ID for a new database to be created"
+		}
+	]
+}

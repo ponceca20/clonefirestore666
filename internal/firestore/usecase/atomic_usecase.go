@@ -31,29 +31,21 @@ func (uc *FirestoreUsecase) AtomicIncrement(ctx context.Context, req AtomicIncre
 		}
 	}
 
-	// Use repository atomic increment for true atomicity
 	err := uc.firestoreRepo.AtomicIncrement(ctx, req.ProjectID, req.DatabaseID, req.CollectionID, req.DocumentID, req.Field, inc)
 	if err != nil {
 		uc.logger.Error("Atomic increment failed", "error", err)
 		return nil, fmt.Errorf("atomic increment failed: %w", err)
 	}
-
-	// Fetch the updated document and return the new value
 	doc, err := uc.firestoreRepo.GetDocument(ctx, req.ProjectID, req.DatabaseID, req.CollectionID, req.DocumentID)
 	if err != nil {
 		uc.logger.Error("Failed to fetch updated document", "error", err)
 		return nil, fmt.Errorf("failed to fetch updated document: %w", err)
 	}
-
 	fieldVal, ok := doc.Fields[req.Field]
 	if !ok {
 		return nil, fmt.Errorf("field not found after increment: %s", req.Field)
 	}
-
-	uc.logger.Info("Atomic increment completed successfully",
-		"field", req.Field,
-		"newValue", fieldVal.ToInterface())
-
+	uc.logger.Info("Atomic increment completed successfully", "field", req.Field, "newValue", fieldVal.ToInterface())
 	return &AtomicIncrementResponse{NewValue: fieldVal.ToInterface()}, nil
 }
 
@@ -76,7 +68,6 @@ func (uc *FirestoreUsecase) AtomicArrayUnion(ctx context.Context, req AtomicArra
 		uc.logger.Error("Atomic array union failed", "error", err)
 		return fmt.Errorf("atomic array union failed: %w", err)
 	}
-
 	uc.logger.Info("Atomic array union completed successfully", "field", req.Field)
 	return nil
 }
@@ -100,7 +91,6 @@ func (uc *FirestoreUsecase) AtomicArrayRemove(ctx context.Context, req AtomicArr
 		uc.logger.Error("Atomic array remove failed", "error", err)
 		return fmt.Errorf("atomic array remove failed: %w", err)
 	}
-
 	uc.logger.Info("Atomic array remove completed successfully", "field", req.Field)
 	return nil
 }
@@ -112,6 +102,11 @@ func (uc *FirestoreUsecase) AtomicServerTimestamp(ctx context.Context, req Atomi
 		"collectionID", req.CollectionID,
 		"documentID", req.DocumentID,
 		"field", req.Field)
+
+	if req.Field == "" {
+		uc.logger.Error("Atomic server timestamp failed: field is required")
+		return fmt.Errorf("field is required")
+	}
 
 	// Create server timestamp field value
 	timestampValue := model.NewFieldValue(time.Now())
@@ -126,7 +121,6 @@ func (uc *FirestoreUsecase) AtomicServerTimestamp(ctx context.Context, req Atomi
 		uc.logger.Error("Atomic server timestamp failed", "error", err)
 		return fmt.Errorf("atomic server timestamp failed: %w", err)
 	}
-
 	uc.logger.Info("Atomic server timestamp completed successfully", "field", req.Field)
 	return nil
 }

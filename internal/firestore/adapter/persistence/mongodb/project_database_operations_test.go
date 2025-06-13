@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"firestore-clone/internal/firestore/domain/model"
 )
 
 // MockProjectCollection implements CollectionInterface for project tests
@@ -71,38 +73,197 @@ func newTestProjectDatabaseOperations() *ProjectDatabaseOperations {
 		db:             NewMockDatabaseProvider(),
 	}
 
-	// For testing, we create the ProjectDatabaseOperations and manually set the collection fields
-	// Since the actual fields are *mongo.Collection, we can't use our mock collections directly
-	// Instead, we'll test at the DocumentRepository level which uses CollectionInterface
+	// Para pruebas, solo se requiere la dependencia repo
 	ops := &ProjectDatabaseOperations{
-		repo:       mockRepo,
-		projectCol: nil, // Will be nil for testing, operations will go through repo
-		dbCol:      nil, // Will be nil for testing, operations will go through repo
+		repo: mockRepo,
 	}
 
 	return ops
 }
 
+// MockDocumentRepositoryWithListProjects mocks only ListProjects for testing
+// (other methods can panic or return zero values)
+type MockDocumentRepositoryWithListProjects struct {
+	ListProjectsFunc func(ctx context.Context, ownerEmail string) ([]*model.Project, error)
+}
+
+func (m *MockDocumentRepositoryWithListProjects) ListProjects(ctx context.Context, ownerEmail string) ([]*model.Project, error) {
+	return m.ListProjectsFunc(ctx, ownerEmail)
+}
+
+// Implement other methods as needed for compilation (can panic)
+
+// MockProjectRepository implements ProjectRepository for unit tests
+// Each method can be set to a custom function for flexible testing
+
+type MockProjectRepository struct {
+	CreateProjectFunc func(ctx context.Context, project *model.Project) error
+	GetProjectFunc    func(ctx context.Context, projectID string) (*model.Project, error)
+	UpdateProjectFunc func(ctx context.Context, project *model.Project) error
+	DeleteProjectFunc func(ctx context.Context, projectID string) error
+	ListProjectsFunc  func(ctx context.Context, ownerEmail string) ([]*model.Project, error)
+}
+
+func (m *MockProjectRepository) CreateProject(ctx context.Context, project *model.Project) error {
+	return m.CreateProjectFunc(ctx, project)
+}
+func (m *MockProjectRepository) GetProject(ctx context.Context, projectID string) (*model.Project, error) {
+	return m.GetProjectFunc(ctx, projectID)
+}
+func (m *MockProjectRepository) UpdateProject(ctx context.Context, project *model.Project) error {
+	return m.UpdateProjectFunc(ctx, project)
+}
+func (m *MockProjectRepository) DeleteProject(ctx context.Context, projectID string) error {
+	return m.DeleteProjectFunc(ctx, projectID)
+}
+func (m *MockProjectRepository) ListProjects(ctx context.Context, ownerEmail string) ([]*model.Project, error) {
+	return m.ListProjectsFunc(ctx, ownerEmail)
+}
+
 func TestProjectDatabaseOperations_CreateProject(t *testing.T) {
-	// Since ProjectDatabaseOperations uses *mongo.Collection directly,
-	// and we can't easily mock that without significant refactoring,
-	// we'll test the basic struct creation instead
-	mockRepo := &DocumentRepository{
-		documentsCol:   &MockProjectCollection{},
-		collectionsCol: &MockProjectCollection{},
-		db:             NewMockDatabaseProvider(),
+	mockRepo := &MockProjectRepository{
+		CreateProjectFunc: func(ctx context.Context, project *model.Project) error {
+			return nil
+		},
 	}
+	ops := NewProjectDatabaseOperations(mockRepo)
+	ctx := context.Background()
+	err := ops.CreateProject(ctx, &model.Project{ProjectID: "p1"})
+	assert.NoError(t, err)
+}
 
-	ops := &ProjectDatabaseOperations{
-		repo:       mockRepo,
-		projectCol: nil,
-		dbCol:      nil,
+func TestProjectDatabaseOperations_GetProject(t *testing.T) {
+	mockRepo := &MockProjectRepository{
+		GetProjectFunc: func(ctx context.Context, projectID string) (*model.Project, error) {
+			return &model.Project{ProjectID: projectID}, nil
+		},
 	}
+	ops := NewProjectDatabaseOperations(mockRepo)
+	ctx := context.Background()
+	project, err := ops.GetProject(ctx, "p1")
+	assert.NoError(t, err)
+	assert.Equal(t, "p1", project.ProjectID)
+}
 
-	assert.NotNil(t, ops)
-	assert.NotNil(t, ops.repo)
+func TestProjectDatabaseOperations_UpdateProject(t *testing.T) {
+	mockRepo := &MockProjectRepository{
+		UpdateProjectFunc: func(ctx context.Context, project *model.Project) error {
+			return nil
+		},
+	}
+	ops := NewProjectDatabaseOperations(mockRepo)
+	ctx := context.Background()
+	err := ops.UpdateProject(ctx, &model.Project{ProjectID: "p1"})
+	assert.NoError(t, err)
+}
 
-	// Note: The actual project creation will fail due to nil collections,
-	// but this test validates the structure setup for the ProjectDatabaseOperations
-	// In a real implementation, integration tests would use a real MongoDB instance
+func TestProjectDatabaseOperations_DeleteProject(t *testing.T) {
+	mockRepo := &MockProjectRepository{
+		DeleteProjectFunc: func(ctx context.Context, projectID string) error {
+			return nil
+		},
+	}
+	ops := NewProjectDatabaseOperations(mockRepo)
+	ctx := context.Background()
+	err := ops.DeleteProject(ctx, "p1")
+	assert.NoError(t, err)
+}
+
+func TestProjectDatabaseOperations_ListProjects_FilterByOwnerEmail(t *testing.T) {
+	mockRepo := &MockProjectRepository{
+		ListProjectsFunc: func(ctx context.Context, ownerEmail string) ([]*model.Project, error) {
+			return []*model.Project{{ProjectID: "p1", OwnerEmail: ownerEmail}}, nil
+		},
+	}
+	ops := NewProjectDatabaseOperations(mockRepo)
+	ctx := context.Background()
+	ownerEmail := "admin@example.com"
+	projects, err := ops.ListProjects(ctx, ownerEmail)
+	assert.NoError(t, err)
+	assert.Len(t, projects, 1)
+	assert.Equal(t, ownerEmail, projects[0].OwnerEmail)
+}
+
+// --- DatabaseOperations tests ---
+
+type MockDatabaseRepository struct {
+	CreateDatabaseFunc func(ctx context.Context, projectID string, database *model.Database) error
+	GetDatabaseFunc    func(ctx context.Context, projectID, databaseID string) (*model.Database, error)
+	UpdateDatabaseFunc func(ctx context.Context, projectID string, database *model.Database) error
+	DeleteDatabaseFunc func(ctx context.Context, projectID, databaseID string) error
+	ListDatabasesFunc  func(ctx context.Context, projectID string) ([]*model.Database, error)
+}
+
+func (m *MockDatabaseRepository) CreateDatabase(ctx context.Context, projectID string, database *model.Database) error {
+	return m.CreateDatabaseFunc(ctx, projectID, database)
+}
+func (m *MockDatabaseRepository) GetDatabase(ctx context.Context, projectID, databaseID string) (*model.Database, error) {
+	return m.GetDatabaseFunc(ctx, projectID, databaseID)
+}
+func (m *MockDatabaseRepository) UpdateDatabase(ctx context.Context, projectID string, database *model.Database) error {
+	return m.UpdateDatabaseFunc(ctx, projectID, database)
+}
+func (m *MockDatabaseRepository) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
+	return m.DeleteDatabaseFunc(ctx, projectID, databaseID)
+}
+func (m *MockDatabaseRepository) ListDatabases(ctx context.Context, projectID string) ([]*model.Database, error) {
+	return m.ListDatabasesFunc(ctx, projectID)
+}
+
+func TestDatabaseOperations_CreateDatabase(t *testing.T) {
+	mockRepo := &MockDatabaseRepository{
+		CreateDatabaseFunc: func(ctx context.Context, projectID string, database *model.Database) error {
+			return nil
+		},
+	}
+	ops := NewDatabaseOperations(mockRepo)
+	err := ops.CreateDatabase(context.Background(), "p1", &model.Database{DatabaseID: "d1"})
+	assert.NoError(t, err)
+}
+
+func TestDatabaseOperations_GetDatabase(t *testing.T) {
+	mockRepo := &MockDatabaseRepository{
+		GetDatabaseFunc: func(ctx context.Context, projectID, databaseID string) (*model.Database, error) {
+			return &model.Database{DatabaseID: databaseID}, nil
+		},
+	}
+	ops := NewDatabaseOperations(mockRepo)
+	db, err := ops.GetDatabase(context.Background(), "p1", "d1")
+	assert.NoError(t, err)
+	assert.Equal(t, "d1", db.DatabaseID)
+}
+
+func TestDatabaseOperations_UpdateDatabase(t *testing.T) {
+	mockRepo := &MockDatabaseRepository{
+		UpdateDatabaseFunc: func(ctx context.Context, projectID string, database *model.Database) error {
+			return nil
+		},
+	}
+	ops := NewDatabaseOperations(mockRepo)
+	err := ops.UpdateDatabase(context.Background(), "p1", &model.Database{DatabaseID: "d1"})
+	assert.NoError(t, err)
+}
+
+func TestDatabaseOperations_DeleteDatabase(t *testing.T) {
+	mockRepo := &MockDatabaseRepository{
+		DeleteDatabaseFunc: func(ctx context.Context, projectID, databaseID string) error {
+			return nil
+		},
+	}
+	ops := NewDatabaseOperations(mockRepo)
+	err := ops.DeleteDatabase(context.Background(), "p1", "d1")
+	assert.NoError(t, err)
+}
+
+func TestDatabaseOperations_ListDatabases(t *testing.T) {
+	mockRepo := &MockDatabaseRepository{
+		ListDatabasesFunc: func(ctx context.Context, projectID string) ([]*model.Database, error) {
+			return []*model.Database{{DatabaseID: "d1"}}, nil
+		},
+	}
+	ops := NewDatabaseOperations(mockRepo)
+	dbs, err := ops.ListDatabases(context.Background(), "p1")
+	assert.NoError(t, err)
+	assert.Len(t, dbs, 1)
+	assert.Equal(t, "d1", dbs[0].DatabaseID)
 }

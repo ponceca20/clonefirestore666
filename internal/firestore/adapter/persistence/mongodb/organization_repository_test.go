@@ -2,6 +2,7 @@ package mongodb
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"firestore-clone/internal/firestore/domain/model"
@@ -24,7 +25,7 @@ func (m *MockOrganizationCollection) InsertOne(ctx context.Context, doc interfac
 	return primitive.NewObjectID(), nil
 }
 func (m *MockOrganizationCollection) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
-	return &MockSingleResult{}
+	return &MockSingleResult{Filter: filter}
 }
 func (m *MockOrganizationCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
 	return &MockUpdateResult{matched: 1}, nil
@@ -43,13 +44,6 @@ func (m *MockOrganizationCollection) ReplaceOne(ctx context.Context, filter inte
 }
 func (m *MockOrganizationCollection) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
 	return &MockSingleResult{}
-}
-
-// MockSingleResult implements SingleResultInterface.
-type MockSingleResult struct{}
-
-func (m *MockSingleResult) Decode(v interface{}) error {
-	return mongo.ErrNoDocuments
 }
 
 // MockUpdateResult implements UpdateResultInterface.
@@ -163,11 +157,11 @@ func TestOrganizationRepository_GetOrganization_NotFound(t *testing.T) {
 	t.Parallel()
 	repo := newTestOrganizationRepository()
 	org, err := repo.GetOrganization(context.Background(), "non-existent-org")
-	if err == nil {
-		t.Error("Expected error for non-existent organization")
+	if !errors.Is(err, model.ErrOrganizationNotFound) {
+		t.Errorf("Expected ErrOrganizationNotFound, got: %v", err)
 	}
 	if org != nil {
-		t.Error("Expected nil organization for non-existent ID")
+		t.Error("Expected nil organization for non-existent ID when error is returned")
 	}
 }
 

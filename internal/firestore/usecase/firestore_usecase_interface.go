@@ -68,15 +68,15 @@ type FirestoreUsecaseInterface interface {
 	AtomicServerTimestamp(ctx context.Context, req AtomicServerTimestampRequest) error
 }
 
-// FirestoreUsecase implements Firestore business logic following hexagonal architecture
+// FirestoreUsecase implements Firestore business logic con arquitectura optimizada (colecciones dinámicas)
 type FirestoreUsecase struct {
-	firestoreRepo repository.FirestoreRepository
+	firestoreRepo repository.FirestoreRepository // Debe ser el tenant-aware repo optimizado
 	securityRepo  repository.SecurityRulesEngine
 	queryEngine   repository.QueryEngine
 	logger        logger.Logger
 }
 
-// NewFirestoreUsecase creates a new Firestore usecase with dependency injection
+// NewFirestoreUsecase crea un nuevo FirestoreUsecase SOLO con arquitectura optimizada
 func NewFirestoreUsecase(
 	firestoreRepo repository.FirestoreRepository,
 	securityRepo repository.SecurityRulesEngine,

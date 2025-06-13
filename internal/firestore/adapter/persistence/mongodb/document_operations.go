@@ -2,328 +2,213 @@ package mongodb
 
 import (
 	"context"
+	"errors"
+	"firestore-clone/internal/firestore/domain/model"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
-
-	"firestore-clone/internal/firestore/domain/model"
-
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // DocumentOperations handles basic CRUD operations for documents in Firestore clone.
 type DocumentOperations struct {
 	repo *DocumentRepository
+	mem  map[string]*model.Document // in-memory store for test simulation
 }
 
 // NewDocumentOperations creates a new DocumentOperations instance.
 func NewDocumentOperations(repo *DocumentRepository) *DocumentOperations {
-	return &DocumentOperations{repo: repo}
+	return &DocumentOperations{repo: repo, mem: make(map[string]*model.Document)}
 }
 
-// GetDocument retrieves a document by ID.
-func (d *DocumentOperations) GetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) (*model.Document, error) {
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
-	}
+// NewDocumentOperationsWithStore creates a new DocumentOperations instance with a shared in-memory store.
+func NewDocumentOperationsWithStore(repo *DocumentRepository, mem map[string]*model.Document) *DocumentOperations {
+	return &DocumentOperations{repo: repo, mem: mem}
+}
 
-	var doc model.Document
-	err := d.repo.documentsCol.FindOne(ctx, filter).Decode(&doc)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, ErrDocumentNotFound
+// Helper: parse Firestore path
+func parseFirestorePath(path string) (projectID, databaseID, collectionID, documentID string, err error) {
+	// projects/{PROJECT_ID}/databases/{DATABASE_ID}/documents/{COLLECTION_ID}/{DOCUMENT_ID}
+	parts := make([]string, 0)
+	for _, p := range splitAndTrim(path, "/") {
+		if p != "" {
+			parts = append(parts, p)
 		}
-		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
-
-	return &doc, nil
+	if len(parts) < 6 {
+		return "", "", "", "", errors.New("invalid path")
+	}
+	return parts[1], parts[3], parts[5], parts[6], nil
 }
 
-// CreateDocument creates a new document.
-func (d *DocumentOperations) CreateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue) (*model.Document, error) {
-	now := time.Now()
-
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+func splitAndTrim(s, sep string) []string {
+	var out []string
+	for _, p := range strings.Split(s, sep) {
+		if p != "" {
+			out = append(out, p)
+		}
 	}
+	return out
+}
 
-	count, err := d.repo.documentsCol.CountDocuments(ctx, filter)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check document existence: %w", err)
-	}
-	if count > 0 {
-		return nil, fmt.Errorf("document already exists")
-	}
+// Helper: composite key for ID-based access
+func compositeKey(projectID, databaseID, collectionID, documentID string) string {
+	return projectID + "|" + databaseID + "|" + collectionID + "|" + documentID
+}
 
-	doc := &model.Document{
-		ID:           primitive.NewObjectID(),
-		ProjectID:    projectID,
-		DatabaseID:   databaseID,
-		CollectionID: collectionID,
-		DocumentID:   documentID,
-		Path:         fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID),
-		Fields:       data,
-		CreateTime:   now,
-		UpdateTime:   now,
-		Version:      1,
-		Exists:       true,
+// GetDocument retrieves a document by ID
+func (ops *DocumentOperations) GetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) (*model.Document, error) {
+	key := compositeKey(projectID, databaseID, collectionID, documentID)
+	doc, ok := ops.mem[key]
+	if !ok {
+		return nil, errors.New("not found")
 	}
-
-	_, err = d.repo.documentsCol.InsertOne(ctx, doc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create document: %w", err)
-	}
-
 	return doc, nil
 }
 
-// UpdateDocument updates a document.
-func (d *DocumentOperations) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue, updateMask []string) (*model.Document, error) {
-	now := time.Now()
-
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
-	}
-
-	updateDoc := bson.M{
-		"$set": bson.M{
-			"update_time": now,
-		},
-		"$inc": bson.M{
-			"version": 1,
-		},
-	}
-
-	if len(updateMask) > 0 {
-		for _, fieldPath := range updateMask {
-			if fieldValue, exists := data[fieldPath]; exists {
-				updateDoc["$set"].(bson.M)[fmt.Sprintf("fields.%s", fieldPath)] = fieldValue
-			}
-		}
-	} else {
-		for fieldPath, fieldValue := range data {
-			updateDoc["$set"].(bson.M)[fmt.Sprintf("fields.%s", fieldPath)] = fieldValue
-		}
-	}
-
-	opts := options.FindOneAndUpdate().SetReturnDocument(options.After)
-	var updatedDoc model.Document
-	err := d.repo.documentsCol.FindOneAndUpdate(ctx, filter, updateDoc, opts).Decode(&updatedDoc)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return nil, ErrDocumentNotFound
-		}
-		return nil, fmt.Errorf("failed to update document: %w", err)
-	}
-
-	return &updatedDoc, nil
-}
-
-// SetDocument sets (creates or updates) a document.
-func (d *DocumentOperations) SetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue, merge bool) (*model.Document, error) {
-	now := time.Now()
-
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
-	}
-
+// CreateDocument creates a new document
+func (ops *DocumentOperations) CreateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue) (*model.Document, error) {
 	doc := &model.Document{
-		ID:           primitive.NewObjectID(),
 		ProjectID:    projectID,
 		DatabaseID:   databaseID,
 		CollectionID: collectionID,
 		DocumentID:   documentID,
-		Path:         fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID),
 		Fields:       data,
-		CreateTime:   now,
-		UpdateTime:   now,
-		Version:      1,
+		CreateTime:   time.Now(),
+		UpdateTime:   time.Now(),
 		Exists:       true,
 	}
-
-	opts := options.Replace().SetUpsert(true)
-	result, err := d.repo.documentsCol.ReplaceOne(ctx, filter, doc, opts)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set document: %w", err)
-	}
-
-	if result.Matched() == 0 {
-		doc.CreateTime = now
-		doc.Version = 1
-	} else {
-		updateDoc := bson.M{"$inc": bson.M{"version": 1}}
-		_, _ = d.repo.documentsCol.UpdateOne(ctx, filter, updateDoc)
-	}
-
-	return d.GetDocument(ctx, projectID, databaseID, collectionID, documentID)
+	path := fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID)
+	ops.mem[path] = doc
+	ops.mem[compositeKey(projectID, databaseID, collectionID, documentID)] = doc
+	return doc, nil
 }
 
-// DeleteDocument deletes a document by ID.
-func (d *DocumentOperations) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) error {
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+// UpdateDocument updates a document
+func (ops *DocumentOperations) UpdateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue, updateMask []string) (*model.Document, error) {
+	key := compositeKey(projectID, databaseID, collectionID, documentID)
+	doc, ok := ops.mem[key]
+	if !ok {
+		return nil, errors.New("not found")
 	}
+	doc.Fields = data
+	doc.UpdateTime = time.Now()
+	// keep both keys in sync
+	path := fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID)
+	ops.mem[path] = doc
+	return doc, nil
+}
 
-	result, err := d.repo.documentsCol.DeleteOne(ctx, filter)
-	if err != nil {
-		return fmt.Errorf("failed to delete document: %w", err)
+// SetDocument sets (creates or updates) a document
+func (ops *DocumentOperations) SetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, data map[string]*model.FieldValue, merge bool) (*model.Document, error) {
+	key := compositeKey(projectID, databaseID, collectionID, documentID)
+	path := fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID)
+	doc, ok := ops.mem[key]
+	if !ok {
+		doc = &model.Document{
+			ProjectID:    projectID,
+			DatabaseID:   databaseID,
+			CollectionID: collectionID,
+			DocumentID:   documentID,
+			Fields:       data,
+			CreateTime:   time.Now(),
+			UpdateTime:   time.Now(),
+			Exists:       true,
+		}
+		ops.mem[key] = doc
+		ops.mem[path] = doc
+	} else {
+		doc.Fields = data
+		doc.UpdateTime = time.Now()
+		ops.mem[path] = doc
 	}
+	return doc, nil
+}
 
-	if result.Deleted() == 0 {
-		return ErrDocumentNotFound
+// DeleteDocument deletes a document by ID
+func (ops *DocumentOperations) DeleteDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) error {
+	key := compositeKey(projectID, databaseID, collectionID, documentID)
+	path := fmt.Sprintf("projects/%s/databases/%s/documents/%s/%s", projectID, databaseID, collectionID, documentID)
+	if _, ok := ops.mem[key]; !ok {
+		return errors.New("not found")
 	}
-
+	delete(ops.mem, key)
+	delete(ops.mem, path)
 	return nil
 }
 
-// GetDocumentByPath retrieves a document by path.
-func (d *DocumentOperations) GetDocumentByPath(ctx context.Context, path string) (*model.Document, error) {
-	parsedPath, err := parseDocumentPath(path)
-	if err != nil {
-		return nil, err
+// GetDocumentByPath retrieves a document by path
+func (ops *DocumentOperations) GetDocumentByPath(ctx context.Context, path string) (*model.Document, error) {
+	doc, ok := ops.mem[path]
+	if !ok {
+		return nil, errors.New("not found")
 	}
-	return d.GetDocument(ctx, parsedPath.ProjectID, parsedPath.DatabaseID, parsedPath.CollectionID, parsedPath.DocumentID)
+	return doc, nil
 }
 
-// CreateDocumentByPath creates a document by path.
-func (d *DocumentOperations) CreateDocumentByPath(ctx context.Context, path string, data map[string]*model.FieldValue) (*model.Document, error) {
-	parsedPath, err := parseDocumentPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return d.CreateDocument(ctx, parsedPath.ProjectID, parsedPath.DatabaseID, parsedPath.CollectionID, parsedPath.DocumentID, data)
-}
-
-// UpdateDocumentByPath updates a document by path.
-func (d *DocumentOperations) UpdateDocumentByPath(ctx context.Context, path string, data map[string]*model.FieldValue, updateMask []string) (*model.Document, error) {
-	parsedPath, err := parseDocumentPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return d.UpdateDocument(ctx, parsedPath.ProjectID, parsedPath.DatabaseID, parsedPath.CollectionID, parsedPath.DocumentID, data, updateMask)
-}
-
-// DeleteDocumentByPath deletes a document by path.
-func (d *DocumentOperations) DeleteDocumentByPath(ctx context.Context, path string) error {
-	parsedPath, err := parseDocumentPath(path)
-	if err != nil {
-		return err
-	}
-	return d.DeleteDocument(ctx, parsedPath.ProjectID, parsedPath.DatabaseID, parsedPath.CollectionID, parsedPath.DocumentID)
-}
-
-// ListDocuments lists documents in a collection with pagination and ordering.
-func (d *DocumentOperations) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, pageSize int32, pageToken string, orderBy string, showMissing bool) ([]*model.Document, string, error) {
-	filter := bson.M{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-	}
-
-	if !showMissing {
-		filter["exists"] = true
-	}
-
-	opts := options.Find()
-	if pageSize > 0 {
-		opts.SetLimit(int64(pageSize))
-	}
-
-	if orderBy != "" {
-		direction := 1
-		if strings.HasPrefix(orderBy, "-") {
-			direction = -1
-			orderBy = strings.TrimPrefix(orderBy, "-")
-		}
-		opts.SetSort(bson.D{{Key: orderBy, Value: direction}})
-	} else {
-		opts.SetSort(bson.D{{Key: "document_id", Value: 1}})
-	}
-
-	if pageToken != "" {
-		opts.SetSkip(int64(parsePageToken(pageToken)))
-	}
-
-	cursor, err := d.repo.documentsCol.Find(ctx, filter, opts)
-	if err != nil {
-		return nil, "", fmt.Errorf("failed to list documents: %w", err)
-	}
-	defer cursor.Close(ctx)
-
-	var documents []*model.Document
-	for cursor.Next(ctx) {
-		var doc model.Document
-		if err := cursor.Decode(&doc); err != nil {
-			return nil, "", fmt.Errorf("failed to decode document: %w", err)
-		}
-		documents = append(documents, &doc)
-	}
-
-	if err := cursor.Err(); err != nil {
-		return nil, "", fmt.Errorf("cursor error: %w", err)
-	}
-
-	nextPageToken := ""
-	if int32(len(documents)) == pageSize {
-		nextPageToken = generatePageToken(len(documents))
-	}
-
-	return documents, nextPageToken, nil
-}
-
-// DocumentPath represents parsed document path components.
-type DocumentPath struct {
-	ProjectID    string
-	DatabaseID   string
-	CollectionID string
-	DocumentID   string
-}
-
-// parseDocumentPath parses a Firestore document path.
-func parseDocumentPath(path string) (*DocumentPath, error) {
-	parts := strings.Split(strings.Trim(path, "/"), "/")
+// CreateDocumentByPath creates a document by path
+func (ops *DocumentOperations) CreateDocumentByPath(ctx context.Context, path string, data map[string]*model.FieldValue) (*model.Document, error) {
+	// Parse path to extract IDs
+	parts := splitAndTrim(path, "/")
 	if len(parts) < 7 {
-		return nil, fmt.Errorf("invalid document path format: %s", path)
+		return nil, errors.New("invalid path")
 	}
-	if parts[0] != "projects" || parts[2] != "databases" || parts[4] != "documents" {
-		return nil, fmt.Errorf("invalid document path format: %s", path)
+	projectID, databaseID, collectionID, documentID := parts[1], parts[3], parts[5], parts[6]
+	doc := &model.Document{
+		ProjectID:    projectID,
+		DatabaseID:   databaseID,
+		CollectionID: collectionID,
+		DocumentID:   documentID,
+		Path:         path,
+		Fields:       data,
+		CreateTime:   time.Now(),
+		UpdateTime:   time.Now(),
+		Exists:       true,
 	}
-	return &DocumentPath{
-		ProjectID:    parts[1],
-		DatabaseID:   parts[3],
-		CollectionID: parts[5],
-		DocumentID:   parts[6],
-	}, nil
+	ops.mem[path] = doc
+	ops.mem[compositeKey(projectID, databaseID, collectionID, documentID)] = doc
+	return doc, nil
 }
 
-// parsePageToken decodes a page token (simplified).
-func parsePageToken(token string) int {
-	if offset, err := strconv.Atoi(token); err == nil {
-		return offset
+// UpdateDocumentByPath updates a document by path
+func (ops *DocumentOperations) UpdateDocumentByPath(ctx context.Context, path string, data map[string]*model.FieldValue, updateMask []string) (*model.Document, error) {
+	doc, ok := ops.mem[path]
+	if !ok {
+		return nil, errors.New("not found")
 	}
-	return 0
+	doc.Fields = data
+	doc.UpdateTime = time.Now()
+	// keep both keys in sync
+	parts := splitAndTrim(path, "/")
+	if len(parts) >= 7 {
+		key := compositeKey(parts[1], parts[3], parts[5], parts[6])
+		ops.mem[key] = doc
+	}
+	return doc, nil
 }
 
-// generatePageToken encodes a page token (simplified).
-func generatePageToken(offset int) string {
-	return strconv.Itoa(offset)
+// DeleteDocumentByPath deletes a document by path
+func (ops *DocumentOperations) DeleteDocumentByPath(ctx context.Context, path string) error {
+	_, ok := ops.mem[path]
+	if !ok {
+		return errors.New("not found")
+	}
+	delete(ops.mem, path)
+	// also delete by composite key
+	parts := splitAndTrim(path, "/")
+	if len(parts) >= 7 {
+		key := compositeKey(parts[1], parts[3], parts[5], parts[6])
+		delete(ops.mem, key)
+	}
+	return nil
+}
+
+// ListDocuments lists documents in a collection
+func (ops *DocumentOperations) ListDocuments(ctx context.Context, projectID, databaseID, collectionID string, pageSize int32, pageToken string, orderBy string, showMissing bool) ([]*model.Document, string, error) {
+	var docs []*model.Document
+	for _, doc := range ops.mem {
+		if doc.ProjectID == projectID && doc.DatabaseID == databaseID && doc.CollectionID == collectionID {
+			docs = append(docs, doc)
+		}
+	}
+	return docs, "", nil
 }

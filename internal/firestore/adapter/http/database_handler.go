@@ -2,6 +2,7 @@ package http
 
 import (
 	"firestore-clone/internal/firestore/usecase"
+	"firestore-clone/internal/shared/errors"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -31,10 +32,35 @@ func (h *HTTPHandler) CreateDatabase(c *fiber.Ctx) error {
 			"message": "Database is required",
 		})
 	}
-
 	database, err := h.FirestoreUC.CreateDatabase(c.UserContext(), req)
 	if err != nil {
-		h.Log.Error("Failed to create database", "error", err)
+		h.Log.Error("Failed to create database", "error", err,
+			"projectID", req.ProjectID,
+			"databaseID", req.Database.DatabaseID)
+
+		// Handle specific error types with appropriate HTTP status codes
+		if errors.IsNotFound(err) {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error":   "project_not_found",
+				"message": err.Error(),
+			})
+		}
+
+		if errors.IsValidation(err) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "validation_failed",
+				"message": err.Error(),
+			})
+		}
+
+		if appErr, ok := err.(*errors.AppError); ok && appErr.Type == errors.ErrorTypeConflict {
+			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
+				"error":   "database_already_exists",
+				"message": err.Error(),
+			})
+		}
+
+		// Default to internal server error
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":   "create_database_failed",
 			"message": err.Error(),

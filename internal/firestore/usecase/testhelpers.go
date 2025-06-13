@@ -12,21 +12,34 @@ import (
 	authModel "firestore-clone/internal/auth/domain/model"
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/domain/repository"
+	"firestore-clone/internal/shared/errors"
 	"firestore-clone/internal/shared/logger"
 )
 
-type MockFirestoreRepo struct{}
+type MockFirestoreRepo struct {
+	projects  map[string]*model.Project
+	dbMu      sync.Mutex
+	databases map[string]map[string]*model.Database // projectID -> databaseID -> *Database
+}
+
+func NewMockFirestoreRepo() *MockFirestoreRepo {
+	return &MockFirestoreRepo{
+		projects:  make(map[string]*model.Project),
+		databases: make(map[string]map[string]*model.Database),
+	}
+}
 
 func (m *MockFirestoreRepo) CreateDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string, fields map[string]*model.FieldValue) (*model.Document, error) {
 	return &model.Document{DocumentID: documentID}, nil
 }
 func (m *MockFirestoreRepo) GetDocument(ctx context.Context, projectID, databaseID, collectionID, documentID string) (*model.Document, error) {
-	// Return a document with some common fields that tests might expect
+	// Return a document with all fields needed for atomic tests
 	return &model.Document{
 		DocumentID: documentID,
 		Fields: map[string]*model.FieldValue{
 			"count":     model.NewFieldValue(int64(42)),
 			"counter":   model.NewFieldValue(int64(1)),           // For atomic increment tests
+			"stock":     model.NewFieldValue(int64(10)),          // Para TestAtomicIncrement_Valid
 			"tags":      model.NewFieldValue([]interface{}{"a"}), // For array operations
 			"updatedAt": model.NewFieldValue(time.Now()),         // For server timestamp
 		},
@@ -42,26 +55,53 @@ func (m *MockFirestoreRepo) ListDocuments(ctx context.Context, projectID, databa
 	return []*model.Document{{DocumentID: "doc1"}}, "", nil
 }
 func (m *MockFirestoreRepo) AtomicIncrement(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value int64) error {
+	if field == "" {
+		return fmt.Errorf("field is required")
+	}
+	if field != "stock" && field != "count" && field != "counter" {
+		return fmt.Errorf("field not found after increment: %s", field)
+	}
 	return nil
 }
 func (m *MockFirestoreRepo) AtomicArrayUnion(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
+	if field == "" {
+		return fmt.Errorf("field is required")
+	}
+	if len(elements) == 0 {
+		return fmt.Errorf("elements required")
+	}
 	return nil
 }
 func (m *MockFirestoreRepo) AtomicArrayRemove(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
+	if field == "" {
+		return fmt.Errorf("field is required")
+	}
+	if len(elements) == 0 {
+		return fmt.Errorf("elements required")
+	}
 	return nil
 }
 func (m *MockFirestoreRepo) AtomicServerTimestamp(ctx context.Context, projectID, databaseID, collectionID, documentID, field string) error {
+	if strings.TrimSpace(field) == "" {
+		return fmt.Errorf("field is required")
+	}
 	return nil
 }
 
 // Add missing methods to MockFirestoreRepo to fully implement FirestoreRepository
 func (m *MockFirestoreRepo) CreateProject(ctx context.Context, project *model.Project) error {
+	if _, exists := m.projects[project.ProjectID]; exists {
+		return fmt.Errorf("project already exists")
+	}
+	m.projects[project.ProjectID] = project
 	return nil
 }
 func (m *MockFirestoreRepo) GetProject(ctx context.Context, projectID string) (*model.Project, error) {
-	return &model.Project{
-		ProjectID: projectID,
-	}, nil
+	if p, ok := m.projects[projectID]; ok {
+		return p, nil
+	}
+	// Cambia el error plano por uno de tipo AppError compatible con errors.IsNotFound
+	return nil, errors.NewNotFoundError("project")
 }
 func (m *MockFirestoreRepo) UpdateProject(ctx context.Context, project *model.Project) error {
 	return nil
@@ -77,27 +117,61 @@ func (m *MockFirestoreRepo) ListProjects(ctx context.Context, ownerEmail string)
 	}, nil
 }
 func (m *MockFirestoreRepo) CreateDatabase(ctx context.Context, projectID string, database *model.Database) error {
+	m.dbMu.Lock()
+	defer m.dbMu.Unlock()
+	if m.databases[projectID] == nil {
+		m.databases[projectID] = make(map[string]*model.Database)
+	}
+	if _, exists := m.databases[projectID][database.DatabaseID]; exists {
+		return errors.NewConflictError("database already exists")
+	}
+	m.databases[projectID][database.DatabaseID] = database
 	return nil
 }
 func (m *MockFirestoreRepo) GetDatabase(ctx context.Context, projectID, databaseID string) (*model.Database, error) {
-	return &model.Database{
-		ProjectID:  projectID,
-		DatabaseID: databaseID,
-	}, nil
+	m.dbMu.Lock()
+	defer m.dbMu.Unlock()
+	if dbs, ok := m.databases[projectID]; ok {
+		if db, ok := dbs[databaseID]; ok {
+			return db, nil
+		}
+	}
+	return nil, errors.NewNotFoundError("database")
 }
 func (m *MockFirestoreRepo) UpdateDatabase(ctx context.Context, projectID string, database *model.Database) error {
+	m.dbMu.Lock()
+	defer m.dbMu.Unlock()
+	if m.databases[projectID] == nil {
+		return errors.NewNotFoundError("database")
+	}
+	if _, exists := m.databases[projectID][database.DatabaseID]; !exists {
+		return errors.NewNotFoundError("database")
+	}
+	m.databases[projectID][database.DatabaseID] = database
 	return nil
 }
 func (m *MockFirestoreRepo) DeleteDatabase(ctx context.Context, projectID, databaseID string) error {
+	m.dbMu.Lock()
+	defer m.dbMu.Unlock()
+	if m.databases[projectID] == nil {
+		return errors.NewNotFoundError("database")
+	}
+	if _, exists := m.databases[projectID][databaseID]; !exists {
+		return errors.NewNotFoundError("database")
+	}
+	delete(m.databases[projectID], databaseID)
 	return nil
 }
 func (m *MockFirestoreRepo) ListDatabases(ctx context.Context, projectID string) ([]*model.Database, error) {
-	return []*model.Database{
-		{
-			ProjectID:  projectID,
-			DatabaseID: "d1",
-		},
-	}, nil
+	m.dbMu.Lock()
+	defer m.dbMu.Unlock()
+	var out []*model.Database
+	if dbs, ok := m.databases[projectID]; ok {
+		for _, db := range dbs {
+			out = append(out, db)
+		}
+	}
+	return out, nil
 }
 func (m *MockFirestoreRepo) GetCollection(ctx context.Context, projectID, databaseID, collectionID string) (*model.Collection, error) {
 	return &model.Collection{

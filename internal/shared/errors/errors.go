@@ -247,3 +247,11 @@ func IsAuthorization(err error) bool {
 	}
 	return errors.Is(err, ErrForbidden) || errors.Is(err, ErrSecurityRuleViolation)
 }
+
+// IsConflict checks if an error is a conflict error
+func IsConflict(err error) bool {
+	if appErr, ok := err.(*AppError); ok {
+		return appErr.Type == ErrorTypeConflict
+	}
+	return errors.Is(err, ErrConflict)
+}
