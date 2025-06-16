@@ -421,6 +421,7 @@ func ValidateDatabaseIDFormat(databaseID string) error {
 // TenantMiddleware validates tenant context and organization access
 func TenantMiddleware() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		fmt.Println("[TenantMiddleware] INICIO: path=", c.Path(), "method=", c.Method(), "params=", c.Params("organizationId"), c.Params("projectID"), c.Params("databaseID"))
 		// Extract organization ID from path, header, query, or Authorization
 		organizationID := c.Params("organizationId")
 		if organizationID == "" {
@@ -438,6 +439,7 @@ func TenantMiddleware() fiber.Handler {
 			organizationID = c.Query("organization_id")
 		}
 		if organizationID == "" {
+			fmt.Println("[TenantMiddleware] organization_id_missing")
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error":   "organization_id_missing",
 				"message": "Organization ID is required",
@@ -446,6 +448,7 @@ func TenantMiddleware() fiber.Handler {
 
 		// Validate organization ID format
 		if err := ValidateOrganizationIDFormat(organizationID); err != nil {
+			fmt.Println("[TenantMiddleware] invalid_organization_id", err)
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error":   "invalid_organization_id",
 				"message": "Organization ID must start with a letter and be at least 3 characters long",
@@ -462,16 +465,19 @@ func TenantMiddleware() fiber.Handler {
 
 		// Extract project ID from path parameter if present
 		if projectID := c.Params("projectId"); projectID != "" {
+			fmt.Println("[TenantMiddleware] projectId=", projectID)
 			ctx = utils.WithProjectID(ctx, projectID)
 			c.SetUserContext(ctx)
 		}
 
 		// Extract database ID from path parameter if present
 		if databaseID := c.Params("databaseId"); databaseID != "" {
+			fmt.Println("[TenantMiddleware] databaseId=", databaseID)
 			ctx = utils.WithDatabaseID(ctx, databaseID)
 			c.SetUserContext(ctx)
 		}
 
+		fmt.Println("[TenantMiddleware] FIN: organizationId=", organizationID, "projectId=", c.Params("projectId"), "databaseId=", c.Params("databaseId"))
 		// TODO: Add tenant validation logic here
 		// - Validate organization exists
 		// - Check user access to organization

@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -47,6 +48,120 @@ type Document struct {
 type FieldValue struct {
 	ValueType FieldValueType `json:"valueType" bson:"value_type"`
 	Value     interface{}    `json:"value" bson:"value"`
+}
+
+// MarshalJSON implements custom JSON marshaling for FieldValue to match Firestore API format
+func (fv *FieldValue) MarshalJSON() ([]byte, error) {
+	// Create a map that follows Firestore API format
+	result := make(map[string]interface{})
+
+	switch fv.ValueType {
+	case FieldTypeBool:
+		result["booleanValue"] = fv.Value
+	case FieldTypeString:
+		result["stringValue"] = fv.Value
+	case FieldTypeInt:
+		// Firestore API expects integers as strings
+		if intVal, ok := fv.Value.(int64); ok {
+			result["integerValue"] = fmt.Sprintf("%d", intVal)
+		} else if strVal, ok := fv.Value.(string); ok {
+			result["integerValue"] = strVal
+		} else {
+			result["integerValue"] = fmt.Sprintf("%v", fv.Value)
+		}
+	case FieldTypeDouble:
+		result["doubleValue"] = fv.Value
+	case FieldTypeTimestamp:
+		// Convert timestamp to Firestore API format
+		if timeVal, ok := fv.Value.(time.Time); ok {
+			result["timestampValue"] = timeVal.Format(time.RFC3339Nano)
+		} else if strVal, ok := fv.Value.(string); ok {
+			result["timestampValue"] = strVal
+		} else {
+			result["timestampValue"] = fv.Value
+		}
+	case FieldTypeBytes:
+		result["bytesValue"] = fv.Value
+	case FieldTypeReference:
+		result["referenceValue"] = fv.Value
+	case FieldTypeGeoPoint:
+		result["geoPointValue"] = fv.Value
+	case FieldTypeArray:
+		result["arrayValue"] = fv.Value
+	case FieldTypeMap:
+		result["mapValue"] = fv.Value
+	case FieldTypeNull:
+		result["nullValue"] = nil
+	default:
+		// Fallback - use the value type as key
+		result[string(fv.ValueType)] = fv.Value
+	}
+
+	return json.Marshal(result)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for FieldValue from Firestore API format
+func (fv *FieldValue) UnmarshalJSON(data []byte) error {
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err != nil {
+		return err
+	}
+
+	// Determine the value type and value from the map
+	if val, exists := result["booleanValue"]; exists {
+		fv.ValueType = FieldTypeBool
+		fv.Value = val
+	} else if val, exists := result["stringValue"]; exists {
+		fv.ValueType = FieldTypeString
+		fv.Value = val
+	} else if val, exists := result["integerValue"]; exists {
+		fv.ValueType = FieldTypeInt
+		fv.Value = val
+	} else if val, exists := result["doubleValue"]; exists {
+		fv.ValueType = FieldTypeDouble
+		fv.Value = val
+	} else if val, exists := result["timestampValue"]; exists {
+		fv.ValueType = FieldTypeTimestamp
+		// Try to parse as time if it's a string
+		if strVal, ok := val.(string); ok {
+			if t, err := time.Parse(time.RFC3339, strVal); err == nil {
+				fv.Value = t
+			} else if t, err := time.Parse(time.RFC3339Nano, strVal); err == nil {
+				fv.Value = t
+			} else {
+				fv.Value = strVal
+			}
+		} else {
+			fv.Value = val
+		}
+	} else if val, exists := result["bytesValue"]; exists {
+		fv.ValueType = FieldTypeBytes
+		fv.Value = val
+	} else if val, exists := result["referenceValue"]; exists {
+		fv.ValueType = FieldTypeReference
+		fv.Value = val
+	} else if val, exists := result["geoPointValue"]; exists {
+		fv.ValueType = FieldTypeGeoPoint
+		fv.Value = val
+	} else if val, exists := result["arrayValue"]; exists {
+		fv.ValueType = FieldTypeArray
+		fv.Value = val
+	} else if val, exists := result["mapValue"]; exists {
+		fv.ValueType = FieldTypeMap
+		fv.Value = val
+	} else if _, exists := result["nullValue"]; exists {
+		fv.ValueType = FieldTypeNull
+		fv.Value = nil
+	} else {
+		// Unknown type - use the first key as type
+		for key, val := range result {
+			fv.ValueType = FieldValueType(key)
+			fv.Value = val
+			break
+		}
+	}
+
+	return nil
 }
 
 // FieldValueType represents the type of a Firestore field value
@@ -220,6 +335,11 @@ func NewFieldValue(value interface{}) *FieldValue {
 	case float32, float64:
 		return &FieldValue{ValueType: FieldTypeDouble, Value: v}
 	case string:
+		// Efficient timestamp detection - only by pattern, not field name
+		parser := NewTimestampParser()
+		if timestamp, isTimestamp := parser.TryParseAsTimestamp(v); isTimestamp {
+			return &FieldValue{ValueType: FieldTypeTimestamp, Value: timestamp}
+		}
 		return &FieldValue{ValueType: FieldTypeString, Value: v}
 	case []byte:
 		return &FieldValue{ValueType: FieldTypeBytes, Value: v}
@@ -243,6 +363,25 @@ func NewFieldValue(value interface{}) *FieldValue {
 		// Default to string representation
 		return &FieldValue{ValueType: FieldTypeString, Value: fmt.Sprintf("%v", v)}
 	}
+}
+
+// NewFieldValueWithHint creates a field value with explicit type hint from client
+func NewFieldValueWithHint(value interface{}, typeHint string) *FieldValue {
+	// If client explicitly provides type hint, trust it
+	parser := NewTimestampParser()
+	if timestamp, isTimestamp := parser.ParseWithHint(value, typeHint); isTimestamp {
+		return &FieldValue{ValueType: FieldTypeTimestamp, Value: timestamp}
+	}
+
+	// Fallback to normal detection
+	return NewFieldValue(value)
+}
+
+// NewFieldValueWithContext creates a new field value with context-aware type detection
+// DEPRECATED: Use NewFieldValue instead - field name detection is unreliable
+func NewFieldValueWithContext(fieldName string, value interface{}) *FieldValue {
+	// Just use the normal NewFieldValue - no field name dependency
+	return NewFieldValue(value)
 }
 
 // ToInterface converts a FieldValue back to a Go interface{}

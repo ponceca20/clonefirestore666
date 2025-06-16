@@ -1,0 +1,78 @@
+### Test query with missing field that should return 0 results
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "compositeFilter": {
+        "op": "AND",
+        "filters": [
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "fechaFabricacion"
+              },
+              "op": "GREATER_THAN_OR_EQUAL",
+              "value": {
+                "timestampValue": "2025-04-01T00:00:00Z"
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "fechaFabricacion"
+              },
+              "op": "LESS_THAN_OR_EQUAL",
+              "value": {
+                "timestampValue": "2025-06-15T23:59:59Z"
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "available"
+              },
+              "op": "EQUAL",
+              "value": {
+                "booleanValue": true
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+
+### Test query with missing field (simple case)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "fieldFilter": {
+        "field": {
+          "fieldPath": "fechaFabricacion"
+        },
+        "op": "GREATER_THAN_OR_EQUAL",
+        "value": {
+          "timestampValue": "2025-04-01T00:00:00Z"
+        }
+      }
+    }
+  }
+}

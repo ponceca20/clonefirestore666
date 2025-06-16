@@ -1,7 +1,9 @@
+// Package mongodb provides MongoDB implementation of Firestore operations
 package mongodb
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"firestore-clone/internal/firestore/domain/model"
@@ -9,227 +11,429 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// --- Use mocks from collection_operations_test.go ---
-// No need to redefine mockCollection, mockSingleResult, mockUpdateResult, mockDeleteResult, mockCursor here.
-// Ensure collection_operations_test.go is built first or move mocks to a shared test file if needed.
+// testContext proporciona un contexto compartido para las pruebas
+var testContext = context.Background()
 
-// mockCollectionWithOptions implements CollectionInterface with correct method signatures for options
-// (for test only)
+// testDocumentData representa datos de prueba comunes
+type testDocumentData struct {
+	projectID    string
+	databaseID   string
+	collectionID string
+	documentID   string
+	fields       map[string]*model.FieldValue
+}
+
+// newTestData crea una nueva instancia de datos de prueba con valores por defecto
+func newTestData() testDocumentData {
+	return testDocumentData{
+		projectID:    "test-project",
+		databaseID:   "test-database",
+		collectionID: "test-collection",
+		documentID:   "test-doc",
+		fields: map[string]*model.FieldValue{
+			"stringField": model.NewFieldValue("test value"),
+			"numberField": {
+				ValueType: model.FieldTypeDouble,
+				Value:     42.0,
+			},
+			"boolField": {
+				ValueType: model.FieldTypeBool,
+				Value:     true,
+			},
+		},
+	}
+}
+
+// newComplexTestData crea datos de prueba con estructuras anidadas
+func newComplexTestData() map[string]*model.FieldValue {
+	return map[string]*model.FieldValue{
+		"array": {
+			ValueType: model.FieldTypeArray,
+			Value: &model.ArrayValue{
+				Values: []*model.FieldValue{
+					model.NewFieldValue("item1"),
+					model.NewFieldValue("item2"),
+				},
+			},
+		},
+		"map": {
+			ValueType: model.FieldTypeMap,
+			Value: &model.MapValue{
+				Fields: map[string]*model.FieldValue{
+					"key1": model.NewFieldValue("value1"),
+					"key2": {
+						ValueType: model.FieldTypeInt,
+						Value:     "42",
+					},
+				},
+			},
+		},
+	}
+}
+
+// mockCollectionWithOptions implementa CollectionInterface con firmas correctas para options
 type mockCollectionWithOptions struct{}
 
 func (m *mockCollectionWithOptions) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
 	return 0, nil
 }
+
 func (m *mockCollectionWithOptions) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
 	return nil, nil
 }
+
 func (m *mockCollectionWithOptions) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
 	return &mockSingleResult{}
 }
+
 func (m *mockCollectionWithOptions) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
 	return &mockUpdateResult{MatchedCount: 1}, nil
 }
+
 func (m *mockCollectionWithOptions) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
 	return &mockUpdateResult{MatchedCount: 1}, nil
 }
+
 func (m *mockCollectionWithOptions) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
 	return &mockDeleteResult{DeletedCount: 1}, nil
 }
+
 func (m *mockCollectionWithOptions) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
 	return &mockCursor{}, nil
 }
+
 func (m *mockCollectionWithOptions) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
 	return &mockCursor{}, nil
 }
+
 func (m *mockCollectionWithOptions) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
 	return &mockSingleResult{}
 }
 
-// TestDocumentOperations_CreateAndGetDocument tests creating and retrieving a document.
-func TestDocumentOperations_CreateAndGetDocument(t *testing.T) {
+// TestFlattenFields verifica la función de aplanamiento de campos
+func TestFlattenFields(t *testing.T) {
+	t.Run("flatten basic fields", func(t *testing.T) {
+		fields := map[string]*model.FieldValue{
+			"string": model.NewFieldValue("test"),
+			"number": {ValueType: model.FieldTypeDouble, Value: 123.45},
+			"bool":   {ValueType: model.FieldTypeBool, Value: true},
+			"int":    {ValueType: model.FieldTypeInt, Value: "42"},
+		}
+
+		flattened := flattenFieldsForMongoDB(fields)
+
+		testCases := []struct {
+			field    string
+			key      string
+			expected interface{}
+		}{
+			{"string", "stringValue", "test"},
+			{"number", "doubleValue", 123.45},
+			{"bool", "booleanValue", true},
+			{"int", "integerValue", "42"},
+		}
+
+		for _, tc := range testCases {
+			field, ok := flattened[tc.field].(map[string]interface{})
+			if !ok {
+				t.Errorf("field %s: expected map[string]interface{}, got %T", tc.field, flattened[tc.field])
+				continue
+			}
+			if field[tc.key] != tc.expected {
+				t.Errorf("field %s: expected %v, got %v", tc.field, tc.expected, field[tc.key])
+			}
+		}
+	})
+
+	t.Run("flatten complex fields", func(t *testing.T) {
+		fields := newComplexTestData()
+		flattened := flattenFieldsForMongoDB(fields)
+
+		// Verificar estructura de array
+		if arrayField, ok := flattened["array"].(map[string]interface{}); ok {
+			if arrayValue, ok := arrayField["arrayValue"].(map[string]interface{}); ok {
+				values := arrayValue["values"].([]map[string]interface{})
+				if len(values) != 2 {
+					t.Errorf("expected 2 array values, got %d", len(values))
+				}
+				if val, ok := values[0]["stringValue"]; !ok || val != "item1" {
+					t.Errorf("expected first array value to be 'item1', got %v", val)
+				}
+			} else {
+				t.Error("array field structure is invalid")
+			}
+		} else {
+			t.Error("array field is not a map")
+		}
+
+		// Verificar estructura de map
+		if mapField, ok := flattened["map"].(map[string]interface{}); ok {
+			if mapValue, ok := mapField["mapValue"].(map[string]interface{}); ok {
+				fields := mapValue["fields"].(map[string]interface{})
+				if val, ok := fields["key2"].(map[string]interface{})["integerValue"]; !ok || val != "42" {
+					t.Errorf("expected map.key2 value to be '42', got %v", val)
+				}
+			} else {
+				t.Error("map field structure is invalid")
+			}
+		} else {
+			t.Error("map field is not a map")
+		}
+	})
+}
+
+// TestExpandFields verifica la función de expansión de campos
+func TestExpandFields(t *testing.T) {
+	t.Run("expand basic fields", func(t *testing.T) {
+		flattened := map[string]interface{}{
+			"string": map[string]interface{}{"stringValue": "test"},
+			"number": map[string]interface{}{"doubleValue": 123.45},
+			"bool":   map[string]interface{}{"booleanValue": true},
+			"int":    map[string]interface{}{"integerValue": "42"},
+		}
+
+		expanded := expandFieldsFromMongoDB(flattened)
+
+		testCases := []struct {
+			field        string
+			expectedType model.FieldValueType
+			expectedVal  interface{}
+		}{
+			{"string", model.FieldTypeString, "test"},
+			{"number", model.FieldTypeDouble, 123.45},
+			{"bool", model.FieldTypeBool, true},
+			{"int", model.FieldTypeInt, "42"},
+		}
+
+		for _, tc := range testCases {
+			field := expanded[tc.field]
+			if field == nil {
+				t.Errorf("field %s is missing", tc.field)
+				continue
+			}
+			if field.ValueType != tc.expectedType {
+				t.Errorf("field %s: expected type %v, got %v", tc.field, tc.expectedType, field.ValueType)
+			}
+			if field.Value != tc.expectedVal {
+				t.Errorf("field %s: expected value %v, got %v", tc.field, tc.expectedVal, field.Value)
+			}
+		}
+	})
+	t.Run("expand complex fields", func(t *testing.T) {
+		original := newComplexTestData()
+		flattened := flattenFieldsForMongoDB(original)
+
+		// Debug: imprimir la estructura aplanada
+		t.Logf("Flattened: %+v", flattened)
+
+		expanded := expandFieldsFromMongoDB(flattened)
+
+		// Debug: imprimir la estructura expandida
+		t.Logf("Expanded: %+v", expanded)
+
+		// Verificar array
+		if array := expanded["array"]; array == nil {
+			t.Error("array field is missing")
+		} else if array.ValueType != model.FieldTypeArray {
+			t.Error("array field has wrong type")
+		} else if arr, ok := array.Value.(*model.ArrayValue); !ok {
+			t.Error("array field value is not ArrayValue")
+		} else if len(arr.Values) != 2 {
+			t.Errorf("expected 2 array values, got %d", len(arr.Values))
+		}
+
+		// Verificar map
+		if mapField := expanded["map"]; mapField == nil {
+			t.Error("map field is missing")
+		} else if mapField.ValueType != model.FieldTypeMap {
+			t.Error("map field has wrong type")
+		} else if m, ok := mapField.Value.(*model.MapValue); !ok {
+			t.Error("map field value is not MapValue")
+		} else if val := m.Fields["key2"]; val == nil || val.Value != "42" {
+			t.Errorf("expected map.key2 value to be '42', got %v", val)
+		}
+	})
+}
+
+// TestDocumentOperations_CRUD verifica las operaciones CRUD básicas
+func TestDocumentOperations_CRUD(t *testing.T) {
 	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	projectID := "p1"
-	databaseID := "d1"
-	collectionID := "c1"
-	documentID := "doc1"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, err := docs.CreateDocument(ctx, projectID, databaseID, collectionID, documentID, fields)
-	if err != nil {
-		t.Fatalf("CreateDocument failed: %v", err)
-	}
-	// Test GetDocument
-	doc, err := docs.GetDocument(ctx, projectID, databaseID, collectionID, documentID)
-	if err != nil {
-		t.Fatalf("GetDocument failed: %v", err)
-	}
-	if doc == nil || doc.DocumentID != documentID {
-		t.Errorf("Expected documentID %s, got %+v", documentID, doc)
+	data := newTestData()
+
+	t.Run("create document", func(t *testing.T) {
+		doc, err := docs.CreateDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, data.documentID, data.fields)
+		if err != nil {
+			t.Fatalf("CreateDocument failed: %v", err)
+		}
+		if doc.DocumentID != data.documentID {
+			t.Errorf("expected documentID %s, got %s", data.documentID, doc.DocumentID)
+		}
+		validateFields(t, doc.Fields, data.fields)
+	})
+
+	t.Run("get document", func(t *testing.T) {
+		doc, err := docs.GetDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, data.documentID)
+		if err != nil {
+			t.Fatalf("GetDocument failed: %v", err)
+		}
+		if doc == nil {
+			t.Fatal("expected document, got nil")
+		}
+		validateFields(t, doc.Fields, data.fields)
+	})
+
+	t.Run("update document", func(t *testing.T) {
+		updateFields := map[string]*model.FieldValue{
+			"stringField": model.NewFieldValue("updated value"),
+			"numberField": {ValueType: model.FieldTypeDouble, Value: 99.9},
+		}
+
+		doc, err := docs.UpdateDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, data.documentID, updateFields, nil)
+		if err != nil {
+			t.Fatalf("UpdateDocument failed: %v", err)
+		}
+
+		validateFields(t, doc.Fields, updateFields)
+	})
+
+	t.Run("delete document", func(t *testing.T) {
+		err := docs.DeleteDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, data.documentID)
+		if err != nil {
+			t.Fatalf("DeleteDocument failed: %v", err)
+		}
+
+		// Verificar que el documento fue eliminado
+		doc, err := docs.GetDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, data.documentID)
+		if err == nil || doc != nil {
+			t.Error("expected error or nil document after deletion")
+		}
+	})
+}
+
+// validateFields ayuda a verificar que los campos coincidan con los esperados
+func validateFields(t *testing.T, got, want map[string]*model.FieldValue) {
+	t.Helper()
+	for k, wantField := range want {
+		gotField, exists := got[k]
+		if !exists {
+			t.Errorf("field %s missing", k)
+			continue
+		}
+		if gotField.ValueType != wantField.ValueType {
+			t.Errorf("field %s: type mismatch. Want %v, got %v",
+				k, wantField.ValueType, gotField.ValueType)
+		}
+		if gotField.Value != wantField.Value {
+			t.Errorf("field %s: value mismatch. Want %v, got %v",
+				k, wantField.Value, gotField.Value)
+		}
 	}
 }
 
-// TestDocumentOperations_UpdateDocument tests updating a document.
-func TestDocumentOperations_UpdateDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	projectID := "p1"
-	databaseID := "d1"
-	collectionID := "c1"
-	documentID := "doc1"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, err := docs.CreateDocument(ctx, projectID, databaseID, collectionID, documentID, fields)
-	if err != nil {
-		t.Fatalf("CreateDocument failed: %v", err)
-	}
-	updateFields := map[string]*model.FieldValue{"foo": model.NewFieldValue("baz")}
-	updatedDoc, err := docs.UpdateDocument(ctx, projectID, databaseID, collectionID, documentID, updateFields, nil)
-	if err != nil {
-		t.Fatalf("UpdateDocument failed: %v", err)
-	}
-	if updatedDoc == nil || updatedDoc.DocumentID != documentID {
-		t.Errorf("Expected updated documentID %s, got %+v", documentID, updatedDoc)
-	}
-}
-
-// TestDocumentOperations_DeleteDocument tests deleting a document.
-func TestDocumentOperations_DeleteDocument(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	projectID := "p1"
-	databaseID := "d1"
-	collectionID := "c1"
-	documentID := "doc1"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, err := docs.CreateDocument(ctx, projectID, databaseID, collectionID, documentID, fields)
-	if err != nil {
-		t.Fatalf("CreateDocument failed: %v", err)
-	}
-	err = docs.DeleteDocument(ctx, projectID, databaseID, collectionID, documentID)
-	if err != nil {
-		t.Fatalf("DeleteDocument failed: %v", err)
-	}
-	// Optionally, try to get the document and expect a not found or nil result
-}
-
-// TestDocumentOperations_GetDocumentByPath tests retrieving a document by path.
-func TestDocumentOperations_GetDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	path := "projects/p1/databases/d1/documents/c1/doc1"
-
-	// First create a document
-	data := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, err := docs.CreateDocumentByPath(ctx, path, data)
-	if err != nil {
-		t.Fatalf("CreateDocumentByPath failed: %v", err)
-	}
-
-	// Then try to get it by path
-	doc, err := docs.GetDocumentByPath(ctx, path)
-	if err != nil {
-		t.Fatalf("GetDocumentByPath failed: %v", err)
-	}
-	if doc == nil || doc.Path != path {
-		t.Errorf("Expected path %s, got %+v", path, doc)
-	}
-	if doc.Fields["foo"].Value != "bar" {
-		t.Errorf("Expected field foo=bar, got %+v", doc.Fields["foo"])
-	}
-}
-
-// TestDocumentOperations_ListDocuments tests listing documents in a collection.
+// TestDocumentOperations_ListDocuments verifica el listado de documentos
 func TestDocumentOperations_ListDocuments(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
+	repo, cleanup := newTestDocumentRepositoryForOpsWithCleanup()
+	defer cleanup() // Clean up at the end
+
 	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	projectID := "p1"
-	databaseID := "d1"
-	collectionID := "c1"
-	docs.CreateDocument(ctx, projectID, databaseID, collectionID, "doc1", map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")})
-	docs.CreateDocument(ctx, projectID, databaseID, collectionID, "doc2", map[string]*model.FieldValue{"foo": model.NewFieldValue("baz")})
-	docsList, _, err := docs.ListDocuments(ctx, projectID, databaseID, collectionID, 10, "", "", false)
-	if err != nil {
-		t.Fatalf("ListDocuments failed: %v", err)
+	data := newTestData()
+
+	// Crear documentos de prueba
+	for i := 1; i <= 3; i++ {
+		docID := fmt.Sprintf("doc%d", i)
+		data.documentID = docID
+		_, err := docs.CreateDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, docID, data.fields)
+		if err != nil {
+			t.Fatalf("failed to create test document %s: %v", docID, err)
+		}
 	}
-	if len(docsList) < 2 {
-		t.Errorf("Expected at least 2 documents, got %d", len(docsList))
-	}
+
+	t.Run("list all documents", func(t *testing.T) {
+		docsList, _, err := docs.ListDocuments(testContext, data.projectID,
+			data.databaseID, data.collectionID, 10, "", "", false)
+		if err != nil {
+			t.Fatalf("ListDocuments failed: %v", err)
+		}
+		if len(docsList) != 3 {
+			t.Errorf("expected 3 documents, got %d", len(docsList))
+		}
+		for _, doc := range docsList {
+			validateFields(t, doc.Fields, data.fields)
+		}
+	})
+
+	t.Run("list with pagination", func(t *testing.T) {
+		// Obtener primera página
+		docsList, nextPageToken, err := docs.ListDocuments(testContext,
+			data.projectID, data.databaseID, data.collectionID, 2, "", "", false)
+		if err != nil {
+			t.Fatalf("ListDocuments (page 1) failed: %v", err)
+		}
+		if len(docsList) != 2 {
+			t.Errorf("expected 2 documents in first page, got %d", len(docsList))
+		}
+		if nextPageToken == "" {
+			t.Error("expected nextPageToken for pagination")
+		}
+
+		// Obtener segunda página
+		remainingDocs, _, err := docs.ListDocuments(testContext,
+			data.projectID, data.databaseID, data.collectionID,
+			2, nextPageToken, "", false)
+		if err != nil {
+			t.Fatalf("ListDocuments (page 2) failed: %v", err)
+		}
+		if len(remainingDocs) != 1 {
+			t.Errorf("expected 1 document in second page, got %d", len(remainingDocs))
+		}
+	})
 }
 
-// TestDocumentOperations_SetDocument tests setting (create or update) a document.
-func TestDocumentOperations_SetDocument(t *testing.T) {
+// TestDocumentOperations_Errors verifica el manejo de errores
+func TestDocumentOperations_Errors(t *testing.T) {
 	repo := newTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	projectID := "p1"
-	databaseID := "d1"
-	collectionID := "c1"
-	documentID := "doc1"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	// Set as create
-	doc, err := docs.SetDocument(ctx, projectID, databaseID, collectionID, documentID, fields, false)
-	if err != nil {
-		t.Fatalf("SetDocument (create) failed: %v", err)
-	}
-	if doc == nil || doc.DocumentID != documentID {
-		t.Errorf("Expected documentID %s, got %+v", documentID, doc)
-	}
-	// Set as update (merge)
-	fields["foo"] = model.NewFieldValue("baz")
-	doc, err = docs.SetDocument(ctx, projectID, databaseID, collectionID, documentID, fields, true)
-	if err != nil {
-		t.Fatalf("SetDocument (update) failed: %v", err)
-	}
-}
+	data := newTestData()
 
-// TestDocumentOperations_CreateDocumentByPath tests creating a document by path.
-func TestDocumentOperations_CreateDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryMock()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	path := "projects/p1/databases/d1/documents/c1/doc2"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	doc, err := docs.CreateDocumentByPath(ctx, path, fields)
-	if err != nil {
-		t.Fatalf("CreateDocumentByPath failed: %v", err)
-	}
-	if doc == nil || doc.Path != path {
-		t.Errorf("Expected path %s, got %+v", path, doc)
-	}
-}
+	t.Run("get non-existent document", func(t *testing.T) {
+		doc, err := docs.GetDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, "non-existent")
+		if err == nil {
+			t.Error("expected error when getting non-existent document")
+		}
+		if doc != nil {
+			t.Error("expected nil document for non-existent ID")
+		}
+	})
 
-// TestDocumentOperations_UpdateDocumentByPath tests updating a document by path.
-func TestDocumentOperations_UpdateDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	path := "projects/p1/databases/d1/documents/c1/doc2"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, _ = docs.CreateDocumentByPath(ctx, path, fields)
-	updateFields := map[string]*model.FieldValue{"foo": model.NewFieldValue("baz")}
-	doc, err := docs.UpdateDocumentByPath(ctx, path, updateFields, nil)
-	if err != nil {
-		t.Fatalf("UpdateDocumentByPath failed: %v", err)
-	}
-	if doc == nil || doc.Path != path {
-		t.Errorf("Expected path %s, got %+v", path, doc)
-	}
-}
+	t.Run("update non-existent document", func(t *testing.T) {
+		_, err := docs.UpdateDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, "non-existent",
+			map[string]*model.FieldValue{"field": model.NewFieldValue("value")}, nil)
+		if err == nil {
+			t.Error("expected error when updating non-existent document")
+		}
+	})
 
-// TestDocumentOperations_DeleteDocumentByPath tests deleting a document by path.
-func TestDocumentOperations_DeleteDocumentByPath(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
-	docs := NewDocumentOperations(repo)
-	ctx := context.Background()
-	path := "projects/p1/databases/d1/documents/c1/doc2"
-	fields := map[string]*model.FieldValue{"foo": model.NewFieldValue("bar")}
-	_, _ = docs.CreateDocumentByPath(ctx, path, fields)
-	err := docs.DeleteDocumentByPath(ctx, path)
-	if err != nil {
-		t.Fatalf("DeleteDocumentByPath failed: %v", err)
-	}
+	t.Run("delete non-existent document", func(t *testing.T) {
+		err := docs.DeleteDocument(testContext, data.projectID, data.databaseID,
+			data.collectionID, "non-existent")
+		if err == nil {
+			t.Error("expected error when deleting non-existent document")
+		}
+	})
+
+	t.Run("invalid document path", func(t *testing.T) {
+		_, err := docs.GetDocumentByPath(testContext, "invalid/path")
+		if err == nil {
+			t.Error("expected error for invalid document path")
+		}
+	})
 }

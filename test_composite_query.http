@@ -1,0 +1,233 @@
+### PASO 1: Verificar que hay documentos en la colección 'productos'
+GET http://localhost:8080/v1/projects/test-project/databases/(default)/documents/productos
+Content-Type: application/json
+
+### PASO 2: Query que debería devolver RESULTADO (precio en rango válido)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "compositeFilter": {
+        "op": "AND",
+        "filters": [
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "GREATER_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 30
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "LESS_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 1000
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "brand"
+              },
+              "op": "EQUAL",
+              "value": {
+                "stringValue": "MobileGenius"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+
+### PASO 3: Query que NO debería devolver resultado (precio fuera de rango)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "compositeFilter": {
+        "op": "AND",
+        "filters": [
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "GREATER_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 30
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "LESS_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 500
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "brand"
+              },
+              "op": "EQUAL",
+              "value": {
+                "stringValue": "MobileGenius"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+
+### PASO 4: Query para productos TechCorp (debería devolver 1 resultado)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "compositeFilter": {
+        "op": "AND",
+        "filters": [
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "GREATER_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 30
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "LESS_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 500
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "brand"
+              },
+              "op": "EQUAL",
+              "value": {
+                "stringValue": "TechCorp"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+
+### PASO 5: Query simple por brand (solo para verificar datos)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "fieldFilter": {
+        "field": {
+          "fieldPath": "brand"
+        },
+        "op": "EQUAL",
+        "value": {
+          "stringValue": "MobileGenius"
+        }
+      }
+    }
+  }
+}
+
+### PASO 6: Query de rango de precios (para ver qué productos están en ese rango)
+POST http://localhost:8080/v1/projects/test-project/databases/(default)/documents:runQuery
+Content-Type: application/json
+
+{
+  "structuredQuery": {
+    "from": [
+      {
+        "collectionId": "productos"
+      }
+    ],
+    "where": {
+      "compositeFilter": {
+        "op": "AND",
+        "filters": [
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "GREATER_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 30
+              }
+            }
+          },
+          {
+            "fieldFilter": {
+              "field": {
+                "fieldPath": "price"
+              },
+              "op": "LESS_THAN_OR_EQUAL",
+              "value": {
+                "doubleValue": 500
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

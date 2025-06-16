@@ -141,6 +141,14 @@ func (uc *FirestoreUsecase) RunQuery(ctx context.Context, req QueryRequest) ([]*
 		}
 	}
 
+	// Use QueryEngine if available, otherwise fallback to repository
+	if uc.queryEngine != nil {
+		uc.logger.Debug("Using QueryEngine for query execution", "collectionID", collectionID)
+		return uc.queryEngine.ExecuteQuery(ctx, collectionID, *req.StructuredQuery)
+	}
+
+	// Fallback to repository method
+	uc.logger.Debug("Using Repository for query execution", "collectionID", collectionID)
 	docs, err := uc.firestoreRepo.RunQuery(ctx, req.ProjectID, req.DatabaseID, collectionID, req.StructuredQuery)
 	if err != nil {
 		uc.logger.Error("Failed to run query", "error", err)

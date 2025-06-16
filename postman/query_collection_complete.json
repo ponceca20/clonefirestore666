@@ -1,0 +1,692 @@
+{
+  "info": {
+    "name": "Firestore Query Collection - Complete Test Suite",
+    "description": "Colección completa para probar todas las queries implementadas en el clon de Firestore. Incluye setup de datos, todos los tipos de queries y cleanup.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "query-collection-complete-2025-fixed"
+  },
+  "item": [
+    {
+      "name": "🚀 Setup - Crear Datos de Prueba",
+      "description": "Requests para crear la estructura básica y llenar la colección con datos de prueba",
+      "item": [
+        {
+          "name": "1. Crear Organización",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"organizationId\": \"{{organizationId}}\",\n  \"displayName\": \"Test Organization for Queries\",\n  \"billingEmail\": \"billing@testorg.com\",\n  \"description\": \"Organización para probar queries de Firestore\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations"]
+            }
+          }
+        },
+        {
+          "name": "2. Crear Proyecto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"project\": {\n    \"projectId\": \"{{projectId}}\",\n    \"displayName\": \"Test Project for Queries\",\n    \"description\": \"Proyecto para probar queries de Firestore\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects"]
+            }
+          }
+        },
+        {
+          "name": "3. Crear Base de Datos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"database\": {\n    \"databaseId\": \"{{databaseId}}\",\n    \"displayName\": \"Test Database for Queries\",\n    \"type\": \"FIRESTORE_NATIVE\",\n    \"locationId\": \"us-central1\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases"]
+            }
+          }
+        },
+        {
+          "name": "4. Crear Producto 1 - Smartphone",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fields\": {\n    \"name\": {\n      \"stringValue\": \"Smartphone Premium\"\n    },\n    \"category\": {\n      \"stringValue\": \"electronics\"\n    },\n    \"price\": {\n      \"doubleValue\": 899.99\n    },\n    \"stock\": {\n      \"integerValue\": \"50\"\n    },\n    \"rating\": {\n      \"doubleValue\": 4.5\n    },\n    \"tags\": {\n      \"arrayValue\": {\n        \"values\": [\n          {\"stringValue\": \"featured\"},\n          {\"stringValue\": \"popular\"},\n          {\"stringValue\": \"electronics\"}\n        ]\n      }\n    },\n    \"active\": {\n      \"booleanValue\": true\n    },\n    \"brand\": {\n      \"stringValue\": \"TechCorp\"\n    },\n    \"launched\": {\n      \"integerValue\": \"2023\"\n    },\n    \"description\": {\n      \"stringValue\": \"High-end smartphone with advanced features\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/smartphone-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "smartphone-001"]
+            }
+          }
+        },
+        {
+          "name": "5. Crear Producto 2 - Laptop",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fields\": {\n    \"name\": {\n      \"stringValue\": \"Gaming Laptop Pro\"\n    },\n    \"category\": {\n      \"stringValue\": \"electronics\"\n    },\n    \"price\": {\n      \"doubleValue\": 1299.99\n    },\n    \"stock\": {\n      \"integerValue\": \"25\"\n    },\n    \"rating\": {\n      \"doubleValue\": 4.8\n    },\n    \"tags\": {\n      \"arrayValue\": {\n        \"values\": [\n          {\"stringValue\": \"gaming\"},\n          {\"stringValue\": \"featured\"},\n          {\"stringValue\": \"high-performance\"}\n        ]\n      }\n    },\n    \"active\": {\n      \"booleanValue\": true\n    },\n    \"brand\": {\n      \"stringValue\": \"GameTech\"\n    },\n    \"launched\": {\n      \"integerValue\": \"2024\"\n    },\n    \"description\": {\n      \"stringValue\": \"Powerful gaming laptop for professionals\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/laptop-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "laptop-001"]
+            }
+          }
+        },
+        {
+          "name": "6. Crear Producto 3 - Libro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fields\": {\n    \"name\": {\n      \"stringValue\": \"Programming Guide\"\n    },\n    \"category\": {\n      \"stringValue\": \"books\"\n    },\n    \"price\": {\n      \"doubleValue\": 39.99\n    },\n    \"stock\": {\n      \"integerValue\": \"100\"\n    },\n    \"rating\": {\n      \"doubleValue\": 4.2\n    },\n    \"tags\": {\n      \"arrayValue\": {\n        \"values\": [\n          {\"stringValue\": \"education\"},\n          {\"stringValue\": \"programming\"},\n          {\"stringValue\": \"bestseller\"}\n        ]\n      }\n    },\n    \"active\": {\n      \"booleanValue\": true\n    },\n    \"brand\": {\n      \"stringValue\": \"TechBooks\"\n    },\n    \"launched\": {\n      \"integerValue\": \"2022\"\n    },\n    \"description\": {\n      \"stringValue\": \"Complete guide to modern programming\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/book-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "book-001"]
+            }
+          }
+        },
+        {
+          "name": "7. Crear Producto 4 - Ropa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fields\": {\n    \"name\": {\n      \"stringValue\": \"Designer T-Shirt\"\n    },\n    \"category\": {\n      \"stringValue\": \"clothing\"\n    },\n    \"price\": {\n      \"doubleValue\": 29.99\n    },\n    \"stock\": {\n      \"integerValue\": \"200\"\n    },\n    \"rating\": {\n      \"doubleValue\": 4.0\n    },\n    \"tags\": {\n      \"arrayValue\": {\n        \"values\": [\n          {\"stringValue\": \"casual\"},\n          {\"stringValue\": \"cotton\"},\n          {\"stringValue\": \"summer\"}\n        ]\n      }\n    },\n    \"active\": {\n      \"booleanValue\": true\n    },\n    \"brand\": {\n      \"stringValue\": \"FashionCorp\"\n    },\n    \"launched\": {\n      \"integerValue\": \"2023\"\n    },\n    \"description\": {\n      \"stringValue\": \"Comfortable designer t-shirt\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/shirt-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "shirt-001"]
+            }
+          }
+        },
+        {
+          "name": "8. Crear Producto 5 - Producto Inactivo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fields\": {\n    \"name\": {\n      \"stringValue\": \"Old Camera\"\n    },\n    \"category\": {\n      \"stringValue\": \"electronics\"\n    },\n    \"price\": {\n      \"doubleValue\": 199.99\n    },\n    \"stock\": {\n      \"integerValue\": \"0\"\n    },\n    \"rating\": {\n      \"doubleValue\": 3.5\n    },\n    \"tags\": {\n      \"arrayValue\": {\n        \"values\": [\n          {\"stringValue\": \"vintage\"},\n          {\"stringValue\": \"discontinued\"}\n        ]\n      }\n    },\n    \"active\": {\n      \"booleanValue\": false\n    },\n    \"brand\": {\n      \"stringValue\": \"OldTech\"\n    },\n    \"launched\": {\n      \"integerValue\": \"2020\"\n    },\n    \"description\": {\n      \"stringValue\": \"Discontinued camera model\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/camera-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "camera-001"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📋 1. Operadores Básicos",
+      "description": "Tests para todos los operadores básicos de comparación",
+      "item": [
+        {
+          "name": "Equal - Buscar productos activos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"active\"\n      },\n      \"op\": \"EQUAL\",\n      \"value\": {\n        \"booleanValue\": true\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"name\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Not Equal - Productos que no son electrónicos",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"op\": \"NOT_EQUAL\",\n      \"value\": {\n        \"stringValue\": \"electronics\"\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Greater Than - Productos caros (>500)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"op\": \"GREATER_THAN\",\n      \"value\": {\n        \"doubleValue\": 500\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Greater Than or Equal - Rating alto (>=4.0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"op\": \"GREATER_THAN_OR_EQUAL\",\n      \"value\": {\n        \"doubleValue\": 4.0\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Less Than - Productos baratos (<100)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"op\": \"LESS_THAN\",\n      \"value\": {\n        \"doubleValue\": 100\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Less Than or Equal - Stock bajo (<=50)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"stock\"\n      },\n      \"op\": \"LESS_THAN_OR_EQUAL\",\n      \"value\": {\n        \"integerValue\": \"50\"\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"stock\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 2. Operadores de Array e IN",
+      "description": "Tests para operadores de arrays y operadores IN/NOT_IN",
+      "item": [
+        {
+          "name": "IN - Múltiples categorías",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"op\": \"IN\",\n      \"value\": {\n        \"arrayValue\": {\n          \"values\": [\n            {\"stringValue\": \"electronics\"},\n            {\"stringValue\": \"books\"},\n            {\"stringValue\": \"clothing\"}\n          ]\n        }\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "NOT_IN - Excluir categorías específicas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"op\": \"NOT_IN\",\n      \"value\": {\n        \"arrayValue\": {\n          \"values\": [\n            {\"stringValue\": \"electronics\"}\n          ]\n        }\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"name\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Array Contains - Productos destacados",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"tags\"\n      },\n      \"op\": \"ARRAY_CONTAINS\",\n      \"value\": {\n        \"stringValue\": \"featured\"\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Array Contains Any - Múltiples tags",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"fieldFilter\": {\n      \"field\": {\n        \"fieldPath\": \"tags\"\n      },\n      \"op\": \"ARRAY_CONTAINS_ANY\",\n      \"value\": {\n        \"arrayValue\": {\n          \"values\": [\n            {\"stringValue\": \"gaming\"},\n            {\"stringValue\": \"bestseller\"},\n            {\"stringValue\": \"popular\"}\n          ]\n        }\n      }\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔧 3. Filtros Compuestos",
+      "description": "Tests para filtros compuestos con operadores AND y OR",
+      "item": [
+        {
+          "name": "AND - Productos electrónicos activos y caros",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"compositeFilter\": {\n      \"op\": \"AND\",\n      \"filters\": [\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"category\"\n            },\n            \"op\": \"EQUAL\",\n            \"value\": {\n              \"stringValue\": \"electronics\"\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"active\"\n            },\n            \"op\": \"EQUAL\",\n            \"value\": {\n              \"booleanValue\": true\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"price\"\n            },\n            \"op\": \"GREATER_THAN\",\n            \"value\": {\n              \"doubleValue\": 500\n            }\n          }\n        }\n      ]\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "AND - Rango de precios con rating alto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"compositeFilter\": {\n      \"op\": \"AND\",\n      \"filters\": [\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"price\"\n            },\n            \"op\": \"GREATER_THAN_OR_EQUAL\",\n            \"value\": {\n              \"doubleValue\": 30\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"price\"\n            },\n            \"op\": \"LESS_THAN_OR_EQUAL\",\n            \"value\": {\n              \"doubleValue\": 1000\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"rating\"\n            },\n            \"op\": \"GREATER_THAN\",\n            \"value\": {\n              \"doubleValue\": 4.0\n            }\n          }\n        }\n      ]\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 4. Ordenamiento y Paginación",
+      "description": "Tests para ordenamiento múltiple y paginación",
+      "item": [
+        {
+          "name": "Ordenamiento simple - Por precio ascendente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Ordenamiento múltiple - Por categoría y precio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"direction\": \"ASCENDING\"\n    },\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Paginación con LIMIT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"name\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Paginación con OFFSET",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"name\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 2,\n  \"offset\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎯 5. Queries Complejas del Mundo Real",
+      "description": "Queries complejas que simularían casos de uso reales",
+      "item": [
+        {
+          "name": "Buscar mejores productos por categoría",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"compositeFilter\": {\n      \"op\": \"AND\",\n      \"filters\": [\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"category\"\n            },\n            \"op\": \"EQUAL\",\n            \"value\": {\n              \"stringValue\": \"electronics\"\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"rating\"\n            },\n            \"op\": \"GREATER_THAN_OR_EQUAL\",\n            \"value\": {\n              \"doubleValue\": 4.5\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"active\"\n            },\n            \"op\": \"EQUAL\",\n            \"value\": {\n              \"booleanValue\": true\n            }\n          }\n        }\n      ]\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"direction\": \"DESCENDING\"\n    },\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 5\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Productos en oferta (con tags especiales)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"compositeFilter\": {\n      \"op\": \"AND\",\n      \"filters\": [\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"tags\"\n            },\n            \"op\": \"ARRAY_CONTAINS_ANY\",\n            \"value\": {\n              \"arrayValue\": {\n                \"values\": [\n                  {\"stringValue\": \"featured\"},\n                  {\"stringValue\": \"popular\"},\n                  {\"stringValue\": \"bestseller\"}\n                ]\n              }\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"stock\"\n            },\n            \"op\": \"GREATER_THAN\",\n            \"value\": {\n              \"integerValue\": \"0\"\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"active\"\n            },\n            \"op\": \"EQUAL\",\n            \"value\": {\n              \"booleanValue\": true\n            }\n          }\n        }\n      ]\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"rating\"\n      },\n      \"direction\": \"DESCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Catálogo por rango de precios",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from\": [\n    {\n      \"collectionId\": \"productos\"\n    }\n  ],\n  \"where\": {\n    \"compositeFilter\": {\n      \"op\": \"AND\",\n      \"filters\": [\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"price\"\n            },\n            \"op\": \"GREATER_THAN_OR_EQUAL\",\n            \"value\": {\n              \"doubleValue\": 50\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"price\"\n            },\n            \"op\": \"LESS_THAN_OR_EQUAL\",\n            \"value\": {\n              \"doubleValue\": 1000\n            }\n          }\n        },\n        {\n          \"fieldFilter\": {\n            \"field\": {\n              \"fieldPath\": \"category\"\n            },\n            \"op\": \"IN\",\n            \"value\": {\n              \"arrayValue\": {\n                \"values\": [\n                  {\"stringValue\": \"electronics\"},\n                  {\"stringValue\": \"books\"}\n                ]\n              }\n            }\n          }\n        }\n      ]\n    }\n  },\n  \"orderBy\": [\n    {\n      \"field\": {\n        \"fieldPath\": \"category\"\n      },\n      \"direction\": \"ASCENDING\"\n    },\n    {\n      \"field\": {\n        \"fieldPath\": \"price\"\n      },\n      \"direction\": \"ASCENDING\"\n    }\n  ],\n  \"limit\": 10\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/query/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "query", "productos"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧹 Cleanup - Limpiar Datos de Prueba",
+      "description": "Requests para limpiar los datos de prueba después de las pruebas",
+      "item": [
+        {
+          "name": "Listar todos los productos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar Producto 1",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/smartphone-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "smartphone-001"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar Producto 2",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/laptop-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "laptop-001"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar Producto 3",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/book-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "book-001"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar Producto 4",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/shirt-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "shirt-001"]
+            }
+          }
+        },
+        {
+          "name": "Eliminar Producto 5",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/organizations/{{organizationId}}/projects/{{projectId}}/databases/{{databaseId}}/documents/productos/camera-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["organizations", "{{organizationId}}", "projects", "{{projectId}}", "databases", "{{databaseId}}", "documents", "productos", "camera-001"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

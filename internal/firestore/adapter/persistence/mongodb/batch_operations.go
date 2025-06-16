@@ -259,14 +259,11 @@ func inferFieldValueType(value interface{}) model.FieldValueType {
 	}
 }
 
-// convertToFieldValues converts raw data to Firestore FieldValue format
+// convertToFieldValues converts raw data to Firestore FieldValue format with smart timestamp detection
 func convertToFieldValues(data map[string]interface{}) map[string]*model.FieldValue {
 	fields := make(map[string]*model.FieldValue)
 	for key, value := range data {
-		fields[key] = &model.FieldValue{
-			ValueType: inferFieldValueType(value),
-			Value:     value,
-		}
+		fields[key] = model.NewFieldValue(value)
 	}
 	return fields
 }

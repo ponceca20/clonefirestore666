@@ -71,9 +71,9 @@ func NewFirestoreModule(
 	tenantAwareRepo := mongodbpersistence.NewTenantAwareDocumentRepository(mongoClient, tenantManager, eventBus, log)
 	log.Info("TenantAwareDocumentRepository initialized successfully.")
 
-	// Initialize query engine with MongoDB implementation
-	queryEngine := mongodbpersistence.NewMongoQueryEngine(masterDB)
-	log.Info("QueryEngine initialized successfully.")
+	// Initialize query engine with tenant-aware MongoDB implementation
+	queryEngine := mongodbpersistence.NewTenantAwareQueryEngine(mongoClient, tenantManager, log)
+	log.Info("TenantAwareQueryEngine initialized successfully.")
 
 	// Initialize security rules engine
 	securityRulesEngine := mongodbpersistence.NewSecurityRulesEngine(masterDB, log)
@@ -144,9 +144,9 @@ func NewFirestoreModuleWithConfig(
 	tenantAwareRepo := mongodbpersistence.NewTenantAwareDocumentRepository(mongoClient, tenantManager, eventBus, log)
 	log.Info("TenantAwareDocumentRepository initialized successfully.")
 
-	// Initialize query engine with MongoDB implementation
-	queryEngine := mongodbpersistence.NewMongoQueryEngine(masterDB)
-	log.Info("QueryEngine initialized successfully.")
+	// Initialize query engine with tenant-aware MongoDB implementation
+	queryEngine := mongodbpersistence.NewTenantAwareQueryEngine(mongoClient, tenantManager, log)
+	log.Info("TenantAwareQueryEngine initialized successfully.")
 
 	// Initialize security rules engine
 	securityRulesEngine := mongodbpersistence.NewSecurityRulesEngine(masterDB, log)
