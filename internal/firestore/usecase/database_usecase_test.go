@@ -208,6 +208,7 @@ func newTestFirestoreUsecaseWithDatabaseMock(repo repository.FirestoreRepository
 		repo,
 		nil, // securityRepo
 		nil, // queryEngine
+		nil, // projectionService
 		&MockLogger{},
 	)
 }

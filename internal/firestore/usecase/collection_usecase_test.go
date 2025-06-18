@@ -16,7 +16,7 @@ import (
 
 // Utiliza los mocks centralizados para mantener la arquitectura hexagonal y el código limpio.
 func newTestFirestoreUsecaseWithMocks(repo repository.FirestoreRepository) FirestoreUsecaseInterface {
-	return NewFirestoreUsecase(repo, nil, nil, &MockLogger{})
+	return NewFirestoreUsecase(repo, nil, nil, nil, &MockLogger{})
 }
 
 // MockRepository especializado para pruebas de colecciones

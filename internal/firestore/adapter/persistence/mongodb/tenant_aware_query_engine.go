@@ -106,5 +106,85 @@ func (qe *TenantAwareQueryEngine) extractOrganizationID(ctx context.Context) (st
 	return "", fmt.Errorf("organization ID not found in context")
 }
 
+// ExecuteQueryWithProjection executes a query with field projection for a specific tenant
+func (qe *TenantAwareQueryEngine) ExecuteQueryWithProjection(ctx context.Context, collectionPath string, query model.Query, projection []string) ([]*model.Document, error) {
+	qe.logger.Info("Executing query with projection for tenant", "collectionPath", collectionPath, "projection", projection)
+
+	// Extract organization ID from context
+	organizationID, err := qe.extractOrganizationID(ctx)
+	if err != nil {
+		qe.logger.Error("Failed to extract organization ID", "error", err)
+		return nil, fmt.Errorf("failed to extract organization ID: %w", err)
+	}
+
+	// Get tenant-specific database
+	tenantDB, err := qe.tenantManager.GetDatabaseForOrganization(ctx, organizationID)
+	if err != nil {
+		qe.logger.Error("Failed to get tenant database", "error", err, "organizationID", organizationID)
+		return nil, fmt.Errorf("failed to get tenant database: %w", err)
+	}
+
+	// Create enhanced MongoDB query engine for this tenant
+	enhancedEngine := NewEnhancedMongoQueryEngine(tenantDB)
+
+	// Execute query with projection
+	return enhancedEngine.ExecuteQueryWithProjection(ctx, collectionPath, query, projection)
+}
+
+// CountDocuments returns the count of documents matching the query for a specific tenant
+func (qe *TenantAwareQueryEngine) CountDocuments(ctx context.Context, collectionPath string, query model.Query) (int64, error) {
+	qe.logger.Info("Counting documents for tenant", "collectionPath", collectionPath)
+
+	// Extract organization ID from context
+	organizationID, err := qe.extractOrganizationID(ctx)
+	if err != nil {
+		qe.logger.Error("Failed to extract organization ID", "error", err)
+		return 0, fmt.Errorf("failed to extract organization ID: %w", err)
+	}
+
+	// Get tenant-specific database
+	tenantDB, err := qe.tenantManager.GetDatabaseForOrganization(ctx, organizationID)
+	if err != nil {
+		qe.logger.Error("Failed to get tenant database", "error", err, "organizationID", organizationID)
+		return 0, fmt.Errorf("failed to get tenant database: %w", err)
+	}
+
+	// Create enhanced MongoDB query engine for this tenant
+	enhancedEngine := NewEnhancedMongoQueryEngine(tenantDB)
+
+	// Count documents
+	return enhancedEngine.CountDocuments(ctx, collectionPath, query)
+}
+
+// ValidateQuery validates if a query is supported by the engine for multi-tenant environment
+func (qe *TenantAwareQueryEngine) ValidateQuery(query model.Query) error {
+	qe.logger.Debug("Validating query", "query", query)
+
+	// Use enhanced MongoDB query engine for validation
+	// Since validation doesn't require tenant context, we can use a temporary engine
+	tempDB := qe.mongoClient.Database("temp_validation")
+	enhancedEngine := NewEnhancedMongoQueryEngine(tempDB)
+
+	return enhancedEngine.ValidateQuery(query)
+}
+
+// GetQueryCapabilities returns the capabilities of this tenant-aware query engine
+func (qe *TenantAwareQueryEngine) GetQueryCapabilities() repository.QueryCapabilities {
+	// Return capabilities that combine multi-tenant support with MongoDB enhanced features
+	return repository.QueryCapabilities{
+		SupportsNestedFields:     true,
+		SupportsArrayContains:    true,
+		SupportsArrayContainsAny: true,
+		SupportsCompositeFilters: true,
+		SupportsOrderBy:          true,
+		SupportsCursorPagination: true,
+		SupportsOffsetPagination: true,
+		SupportsProjection:       true,
+		MaxFilterCount:           100, // MongoDB limit
+		MaxOrderByCount:          32,  // MongoDB sort limit
+		MaxNestingDepth:          100, // Firestore/MongoDB support deep nesting
+	}
+}
+
 // Asegurar que implementa la interfaz
 var _ repository.QueryEngine = (*TenantAwareQueryEngine)(nil)

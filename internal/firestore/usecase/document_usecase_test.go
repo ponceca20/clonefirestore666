@@ -17,6 +17,7 @@ func newTestFirestoreDocumentUsecase() usecase.FirestoreUsecaseInterface {
 		usecase.NewMockFirestoreRepo(), // Mock repo hexagonal
 		nil,                            // Security repo (no necesario aquí)
 		nil,                            // Query engine (no necesario aquí)
+		nil,                            // Projection service (no necesario aquí)
 		&usecase.MockLogger{},          // Logger dummy
 	)
 }

@@ -16,6 +16,9 @@ import (
 func TestFilterBugDiagnosis(t *testing.T) {
 	ctx := context.Background()
 
+	// Create query engine instance for testing, following hexagonal architecture
+	queryEngine := NewMongoQueryEngine(nil) // MongoDB connection not needed for filter logic testing
+
 	t.Run("Diagnose Category AND Available Filter Bug", func(t *testing.T) {
 		// This reproduces the exact query that's failing in production
 		// Following Firestore's composite filter structure
@@ -38,7 +41,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 		t.Logf("Query filters: %+v", query.Filters)
 
 		// Test filter conversion using internal MongoDB adapter
-		mongoFilter := buildMongoFilter(query.Filters)
+		mongoFilter := queryEngine.buildMongoFilter(query.Filters)
 		require.NotNil(t, mongoFilter, "MongoDB filter must not be nil")
 
 		t.Logf("Generated MongoDB filter: %+v", mongoFilter)
@@ -63,13 +66,12 @@ func TestFilterBugDiagnosis(t *testing.T) {
 
 		// Validate filter is properly constructed
 		assert.NotEmpty(t, mongoFilter, "MongoDB filter should not be empty")
-
 		// Test individual filter conversion following single responsibility principle
 		for i, filter := range query.Filters {
 			t.Logf("Testing filter %d: Field=%s, Operator=%s, Value=%v",
 				i, filter.Field, filter.Operator, filter.Value)
 
-			individualFilter := singleMongoFilter(filter)
+			individualFilter := queryEngine.singleMongoFilter(filter)
 			require.NotEmpty(t, individualFilter, "Individual filter should not be empty")
 
 			t.Logf("Individual MongoDB filter %d: %+v", i, individualFilter)
@@ -100,31 +102,38 @@ func TestFilterBugDiagnosis(t *testing.T) {
 			})
 		}
 	})
-
-	t.Run("Validate Field Path Determination", func(t *testing.T) {
-		// Test field path determination following Firestore document structure
+	t.Run("Validate Field Path Resolution", func(t *testing.T) {
+		// Test field path resolution following Firestore document structure using the FieldPathResolver
 		fieldPathTestCases := []struct {
 			field    string
 			value    interface{}
-			operator string
 			expected string
 		}{
-			{"category", "Electronics", string(model.OperatorEqual), "fields.category.stringValue"},
-			{"available", true, string(model.OperatorEqual), "fields.available.booleanValue"},
-			{"price", 99.99, string(model.OperatorEqual), "fields.price.doubleValue"},
-			{"stock", int64(50), string(model.OperatorEqual), "fields.stock.integerValue"},
+			{"category", "Electronics", "fields.category.stringValue"},
+			{"available", true, "fields.available.booleanValue"},
+			{"price", 99.99, "fields.price.doubleValue"},
+			{"stock", int64(50), "fields.stock.integerValue"},
 		}
 
 		for _, tc := range fieldPathTestCases {
 			t.Run(tc.field, func(t *testing.T) {
-				fieldPath := determineFieldPath(tc.field, tc.value, tc.operator)
-				t.Logf("Field: %s, Value: %v (%T), Operator: %s -> Path: %s",
-					tc.field, tc.value, tc.value, tc.operator, fieldPath)
-				assert.Equal(t, tc.expected, fieldPath,
+				// Create a FieldPath and determine value type using the new approach
+				fieldPath, err := model.NewFieldPath(tc.field)
+				require.NoError(t, err, "Field path creation should not fail")
+
+				valueType := model.DetermineValueType(tc.value)
+
+				// Use the FieldPathResolver to get the MongoDB path
+				mongoPath, err := queryEngine.fieldPathResolver.ResolveFieldPath(fieldPath, valueType)
+				require.NoError(t, err, "Field path resolution should not fail")
+				t.Logf("Field: %s, Value: %v (%T), ValueType: %s -> Path: %s",
+					tc.field, tc.value, tc.value, valueType, mongoPath)
+				assert.Equal(t, tc.expected, mongoPath,
 					"Field path must follow Firestore document structure")
 			})
 		}
 	})
+
 	t.Run("Simulate Real Filter Problem", func(t *testing.T) {
 		// Create the exact filter that should work following Firestore semantics
 		filter := model.Filter{
@@ -136,7 +145,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 		t.Logf("Original filter: %+v", filter)
 
 		// Convert using our adapter function
-		mongoFilter := singleMongoFilter(filter)
+		mongoFilter := queryEngine.singleMongoFilter(filter)
 		t.Logf("Converted MongoDB filter: %+v", mongoFilter)
 
 		// Validate filter is not empty (this would indicate our bug)
@@ -152,7 +161,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 
 		t.Logf("Boolean filter: %+v", boolFilter)
 
-		mongoBoolFilter := singleMongoFilter(boolFilter)
+		mongoBoolFilter := queryEngine.singleMongoFilter(boolFilter)
 		t.Logf("Converted boolean MongoDB filter: %+v", mongoBoolFilter)
 
 		require.NotEmpty(t, mongoBoolFilter,
@@ -164,6 +173,9 @@ func TestFilterBugDiagnosis(t *testing.T) {
 // This test replicates the production scenario to identify the root cause
 func TestFirestoreProductionQueryReplication(t *testing.T) {
 	ctx := context.Background()
+
+	// Create query engine instance for testing, following hexagonal architecture
+	queryEngine := NewMongoQueryEngine(nil) // MongoDB connection not needed for filter logic testing
 
 	t.Run("Replicate Exact Production Query", func(t *testing.T) {
 		// This simulates the exact query structure from the JSON request body
@@ -189,7 +201,7 @@ func TestFirestoreProductionQueryReplication(t *testing.T) {
 		t.Logf("Number of filters: %d", len(query.Filters))
 
 		// Build the MongoDB filter using the adapter
-		mongoFilter := buildMongoFilter(query.Filters)
+		mongoFilter := queryEngine.buildMongoFilter(query.Filters)
 		require.NotNil(t, mongoFilter,
 			"CRITICAL BUG: MongoDB filter is nil! This is why all documents are being returned.")
 		require.NotEmpty(t, mongoFilter,

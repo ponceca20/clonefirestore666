@@ -38,9 +38,12 @@ type Query struct {
 
 // Filter represents a single filter condition in a query (where clause)
 type Filter struct {
-	Field    string      `json:"field" bson:"field"`       // Document field to filter
-	Operator Operator    `json:"operator" bson:"operator"` // Comparison operator
-	Value    interface{} `json:"value" bson:"value"`       // Value to compare against
+	Field     string         `json:"field" bson:"field"`                              // Document field to filter (legacy)
+	FieldPath *FieldPath     `json:"fieldPath,omitempty" bson:"field_path,omitempty"` // Enhanced field path support
+	Operator  Operator       `json:"operator" bson:"operator"`                        // Comparison operator
+	Value     interface{}    `json:"value" bson:"value"`                              // Value to compare against
+	ValueType FieldValueType `json:"valueType,omitempty" bson:"value_type,omitempty"` // Type hint for MongoDB mapping
+
 	// For composite filters (AND/OR)
 	Composite  string   `json:"composite,omitempty" bson:"composite,omitempty"` // "and" or "or"
 	SubFilters []Filter `json:"subFilters,omitempty" bson:"sub_filters,omitempty"`
@@ -194,6 +197,52 @@ func (q *Query) AddFilter(field string, operator Operator, value interface{}) *Q
 		Value:    value,
 	})
 	return q
+}
+
+// AddFilterWithFieldPath adds a new filter using a FieldPath to the query
+func (q *Query) AddFilterWithFieldPath(fieldPath *FieldPath, operator Operator, value interface{}, valueType FieldValueType) *Query {
+	q.Filters = append(q.Filters, Filter{
+		FieldPath: fieldPath,
+		Field:     fieldPath.Raw(), // Keep legacy field for backward compatibility
+		Operator:  operator,
+		Value:     value,
+		ValueType: valueType,
+	})
+	return q
+}
+
+// GetEffectiveFieldPath returns the FieldPath if available, otherwise creates one from Field
+func (f *Filter) GetEffectiveFieldPath() (*FieldPath, error) {
+	if f.FieldPath != nil {
+		return f.FieldPath, nil
+	}
+
+	if f.Field != "" {
+		return NewFieldPath(f.Field)
+	}
+
+	return nil, ErrInvalidFilterField
+}
+
+// IsNestedField returns true if the filter targets a nested field
+func (f *Filter) IsNestedField() bool {
+	if fp, err := f.GetEffectiveFieldPath(); err == nil {
+		return fp.IsNested()
+	}
+	return false
+}
+
+// IsComposite returns true if this is a composite filter (AND/OR)
+func (f *Filter) IsComposite() bool {
+	return f.Composite != "" && len(f.SubFilters) > 0
+}
+
+// IsArrayOperation returns true if the operator works on arrays
+func (f *Filter) IsArrayOperation() bool {
+	return f.Operator == OperatorArrayContains ||
+		f.Operator == OperatorArrayContainsAny ||
+		f.Operator == OperatorIn ||
+		f.Operator == OperatorNotIn
 }
 
 // AddOrder adds a new ordering to the query

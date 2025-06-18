@@ -16,6 +16,11 @@ import (
 func TestFullQueryPipeline(t *testing.T) {
 	ctx := context.Background()
 
+	// Create query engine instance following hexagonal architecture
+	// For unit tests, we don't need a real database connection
+	// The query engine contains the FieldPathResolver that handles Firestore-to-MongoDB field path translation
+	queryEngine := NewMongoQueryEngine(nil)
+
 	t.Run("Validate Complete Query Execution with Filter Logic", func(t *testing.T) {
 		// Create test documents following Firestore document structure
 		testDocs := createFirestoreTestDocuments()
@@ -42,8 +47,8 @@ func TestFullQueryPipeline(t *testing.T) {
 
 		t.Logf("Executing query with filters: %+v", query.Filters)
 
-		// Test the filter conversion (this is where our fix applies)
-		mongoFilter := buildMongoFilter(query.Filters)
+		// Test the filter conversion using our fixed FieldPathResolver implementation
+		mongoFilter := queryEngine.buildMongoFilter(query.Filters)
 		require.NotNil(t, mongoFilter, "MongoDB filter must not be nil")
 		require.NotEmpty(t, mongoFilter, "MongoDB filter must not be empty")
 
@@ -106,13 +111,12 @@ func TestFullQueryPipeline(t *testing.T) {
 				description:  "Boolean field filter following Firestore document structure",
 			},
 		}
-
 		for _, tc := range filterTestCases {
 			t.Run(tc.name, func(t *testing.T) {
 				t.Logf("Testing: %s", tc.description)
 
-				// Test the filter conversion using our fixed implementation
-				mongoFilter := singleMongoFilter(tc.filter)
+				// Test the filter conversion using our fixed FieldPathResolver implementation
+				mongoFilter := queryEngine.singleMongoFilter(tc.filter)
 
 				t.Logf("Filter: %+v", tc.filter)
 				t.Logf("Expected BSON: %+v", tc.expectedBSON)

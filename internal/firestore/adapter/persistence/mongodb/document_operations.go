@@ -281,13 +281,102 @@ func expandFieldsFromMongoDB(flatFields map[string]interface{}) map[string]*mode
 					}
 				}
 			} else if arrayVal, exists := valueMap["arrayValue"]; exists {
+				// Debug: Log array processing
+				fmt.Printf("[DEBUG expandFieldsFromMongoDB] Found arrayValue for field '%s': %+v\n", key, arrayVal)
+
 				if arrayMap, ok := arrayVal.(map[string]interface{}); ok {
-					// Intentar con []interface{} primero
-					if values, ok := arrayMap["values"].([]interface{}); ok {
-						fieldValues := make([]*model.FieldValue, 0, len(values))
-						for _, val := range values {
-							if valMap, ok := val.(map[string]interface{}); ok {
-								// Procesar cada elemento del array directamente
+					fmt.Printf("[DEBUG expandFieldsFromMongoDB] arrayMap structure: %+v\n", arrayMap)
+
+					// Handle array processing more robustly
+					if valuesRaw, exists := arrayMap["values"]; exists {
+						fieldValues := make([]*model.FieldValue, 0)
+
+						// Handle different types of values array
+						switch values := valuesRaw.(type) {
+						case []interface{}:
+							fmt.Printf("[DEBUG expandFieldsFromMongoDB] Processing %d array values ([]interface{})\n", len(values))
+							for _, val := range values {
+								if valMap, ok := val.(map[string]interface{}); ok {
+									// Process each array element
+									if boolVal, exists := valMap["booleanValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeBool,
+											Value:     boolVal,
+										})
+									} else if strVal, exists := valMap["stringValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeString,
+											Value:     strVal,
+										})
+									} else if intVal, exists := valMap["integerValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeInt,
+											Value:     intVal,
+										})
+									} else if doubleVal, exists := valMap["doubleValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeDouble,
+											Value:     doubleVal,
+										})
+									} else if timestampVal, exists := valMap["timestampValue"]; exists {
+										// Handle timestamp in arrays
+										if timestampStr, ok := timestampVal.(string); ok {
+											if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
+												fieldValues = append(fieldValues, &model.FieldValue{
+													ValueType: model.FieldTypeTimestamp,
+													Value:     t,
+												})
+											} else if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+												fieldValues = append(fieldValues, &model.FieldValue{
+													ValueType: model.FieldTypeTimestamp,
+													Value:     t,
+												})
+											} else {
+												fieldValues = append(fieldValues, &model.FieldValue{
+													ValueType: model.FieldTypeString,
+													Value:     timestampStr,
+												})
+											}
+										} else if timeVal, ok := timestampVal.(time.Time); ok {
+											fieldValues = append(fieldValues, &model.FieldValue{
+												ValueType: model.FieldTypeTimestamp,
+												Value:     timeVal,
+											})
+										} else if primitiveDateTime, ok := timestampVal.(primitive.DateTime); ok {
+											fieldValues = append(fieldValues, &model.FieldValue{
+												ValueType: model.FieldTypeTimestamp,
+												Value:     primitiveDateTime.Time(),
+											})
+										} else if dateMap, ok := timestampVal.(map[string]interface{}); ok {
+											if dateStr, exists := dateMap["$date"]; exists {
+												if dateString, ok := dateStr.(string); ok {
+													if t, err := time.Parse(time.RFC3339, dateString); err == nil {
+														fieldValues = append(fieldValues, &model.FieldValue{
+															ValueType: model.FieldTypeTimestamp,
+															Value:     t,
+														})
+													} else if t, err := time.Parse(time.RFC3339Nano, dateString); err == nil {
+														fieldValues = append(fieldValues, &model.FieldValue{
+															ValueType: model.FieldTypeTimestamp,
+															Value:     t,
+														})
+													}
+												} else if dateTime, ok := dateStr.(time.Time); ok {
+													fieldValues = append(fieldValues, &model.FieldValue{
+														ValueType: model.FieldTypeTimestamp,
+														Value:     dateTime,
+													})
+												}
+											}
+										}
+									}
+								}
+							}
+
+						case []map[string]interface{}:
+							fmt.Printf("[DEBUG expandFieldsFromMongoDB] Processing %d array values ([]map[string]interface{})\n", len(values))
+							for _, valMap := range values {
+								// Process each array element directly
 								if boolVal, exists := valMap["booleanValue"]; exists {
 									fieldValues = append(fieldValues, &model.FieldValue{
 										ValueType: model.FieldTypeBool,
@@ -309,7 +398,7 @@ func expandFieldsFromMongoDB(flatFields map[string]interface{}) map[string]*mode
 										Value:     doubleVal,
 									})
 								} else if timestampVal, exists := valMap["timestampValue"]; exists {
-									// Handle timestamp in arrays - MongoDB can return different types
+									// Handle timestamp in arrays (second case)
 									if timestampStr, ok := timestampVal.(string); ok {
 										if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
 											fieldValues = append(fieldValues, &model.FieldValue{
@@ -361,98 +450,105 @@ func expandFieldsFromMongoDB(flatFields map[string]interface{}) map[string]*mode
 									}
 								}
 							}
-						}
-						result[key] = &model.FieldValue{
-							ValueType: model.FieldTypeArray,
-							Value: &model.ArrayValue{
-								Values: fieldValues,
-							},
-						}
-					} else if values, ok := arrayMap["values"].([]map[string]interface{}); ok {
-						// Manejar el caso específico de []map[string]interface{}
-						fieldValues := make([]*model.FieldValue, 0, len(values))
-						for _, valMap := range values {
-							// Procesar cada elemento del array directamente
-							if boolVal, exists := valMap["booleanValue"]; exists {
-								fieldValues = append(fieldValues, &model.FieldValue{
-									ValueType: model.FieldTypeBool,
-									Value:     boolVal,
-								})
-							} else if strVal, exists := valMap["stringValue"]; exists {
-								fieldValues = append(fieldValues, &model.FieldValue{
-									ValueType: model.FieldTypeString,
-									Value:     strVal,
-								})
-							} else if intVal, exists := valMap["integerValue"]; exists {
-								fieldValues = append(fieldValues, &model.FieldValue{
-									ValueType: model.FieldTypeInt,
-									Value:     intVal,
-								})
-							} else if doubleVal, exists := valMap["doubleValue"]; exists {
-								fieldValues = append(fieldValues, &model.FieldValue{
-									ValueType: model.FieldTypeDouble,
-									Value:     doubleVal,
-								})
-							} else if timestampVal, exists := valMap["timestampValue"]; exists {
-								// Handle timestamp in arrays (second case) - MongoDB can return different types
-								if timestampStr, ok := timestampVal.(string); ok {
-									if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
+
+						case primitive.A:
+							fmt.Printf("[DEBUG expandFieldsFromMongoDB] Processing %d array values (primitive.A)\n", len(values))
+							for _, val := range values {
+								if valMap, ok := val.(map[string]interface{}); ok {
+									// Process each array element
+									if boolVal, exists := valMap["booleanValue"]; exists {
 										fieldValues = append(fieldValues, &model.FieldValue{
-											ValueType: model.FieldTypeTimestamp,
-											Value:     t,
+											ValueType: model.FieldTypeBool,
+											Value:     boolVal,
 										})
-									} else if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-										fieldValues = append(fieldValues, &model.FieldValue{
-											ValueType: model.FieldTypeTimestamp,
-											Value:     t,
-										})
-									} else {
+									} else if strVal, exists := valMap["stringValue"]; exists {
 										fieldValues = append(fieldValues, &model.FieldValue{
 											ValueType: model.FieldTypeString,
-											Value:     timestampStr,
+											Value:     strVal,
 										})
-									}
-								} else if timeVal, ok := timestampVal.(time.Time); ok {
-									fieldValues = append(fieldValues, &model.FieldValue{
-										ValueType: model.FieldTypeTimestamp,
-										Value:     timeVal,
-									})
-								} else if primitiveDateTime, ok := timestampVal.(primitive.DateTime); ok {
-									fieldValues = append(fieldValues, &model.FieldValue{
-										ValueType: model.FieldTypeTimestamp,
-										Value:     primitiveDateTime.Time(),
-									})
-								} else if dateMap, ok := timestampVal.(map[string]interface{}); ok {
-									if dateStr, exists := dateMap["$date"]; exists {
-										if dateString, ok := dateStr.(string); ok {
-											if t, err := time.Parse(time.RFC3339, dateString); err == nil {
+									} else if intVal, exists := valMap["integerValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeInt,
+											Value:     intVal,
+										})
+									} else if doubleVal, exists := valMap["doubleValue"]; exists {
+										fieldValues = append(fieldValues, &model.FieldValue{
+											ValueType: model.FieldTypeDouble,
+											Value:     doubleVal,
+										})
+									} else if timestampVal, exists := valMap["timestampValue"]; exists {
+										// Handle timestamp in arrays
+										if timestampStr, ok := timestampVal.(string); ok {
+											if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
 												fieldValues = append(fieldValues, &model.FieldValue{
 													ValueType: model.FieldTypeTimestamp,
 													Value:     t,
 												})
-											} else if t, err := time.Parse(time.RFC3339Nano, dateString); err == nil {
+											} else if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
 												fieldValues = append(fieldValues, &model.FieldValue{
 													ValueType: model.FieldTypeTimestamp,
 													Value:     t,
+												})
+											} else {
+												fieldValues = append(fieldValues, &model.FieldValue{
+													ValueType: model.FieldTypeString,
+													Value:     timestampStr,
 												})
 											}
-										} else if dateTime, ok := dateStr.(time.Time); ok {
+										} else if timeVal, ok := timestampVal.(time.Time); ok {
 											fieldValues = append(fieldValues, &model.FieldValue{
 												ValueType: model.FieldTypeTimestamp,
-												Value:     dateTime,
+												Value:     timeVal,
 											})
+										} else if primitiveDateTime, ok := timestampVal.(primitive.DateTime); ok {
+											fieldValues = append(fieldValues, &model.FieldValue{
+												ValueType: model.FieldTypeTimestamp,
+												Value:     primitiveDateTime.Time(),
+											})
+										} else if dateMap, ok := timestampVal.(map[string]interface{}); ok {
+											if dateStr, exists := dateMap["$date"]; exists {
+												if dateString, ok := dateStr.(string); ok {
+													if t, err := time.Parse(time.RFC3339, dateString); err == nil {
+														fieldValues = append(fieldValues, &model.FieldValue{
+															ValueType: model.FieldTypeTimestamp,
+															Value:     t,
+														})
+													} else if t, err := time.Parse(time.RFC3339Nano, dateString); err == nil {
+														fieldValues = append(fieldValues, &model.FieldValue{
+															ValueType: model.FieldTypeTimestamp,
+															Value:     t,
+														})
+													}
+												} else if dateTime, ok := dateStr.(time.Time); ok {
+													fieldValues = append(fieldValues, &model.FieldValue{
+														ValueType: model.FieldTypeTimestamp,
+														Value:     dateTime,
+													})
+												}
+											}
 										}
 									}
 								}
 							}
+
+						default:
+							fmt.Printf("[DEBUG expandFieldsFromMongoDB] Unexpected values type: %T\n", values)
 						}
+
+						// Create the array field
+						fmt.Printf("[DEBUG expandFieldsFromMongoDB] Creating FieldValue for array field '%s' with %d values\n", key, len(fieldValues))
 						result[key] = &model.FieldValue{
 							ValueType: model.FieldTypeArray,
 							Value: &model.ArrayValue{
 								Values: fieldValues,
 							},
 						}
+						fmt.Printf("[DEBUG expandFieldsFromMongoDB] Successfully created array field '%s'\n", key)
+					} else {
+						fmt.Printf("[DEBUG expandFieldsFromMongoDB] Array field '%s' missing 'values' key\n", key)
 					}
+				} else {
+					fmt.Printf("[DEBUG expandFieldsFromMongoDB] arrayVal for field '%s' is not a map[string]interface{}\n", key)
 				}
 			} else if mapVal, exists := valueMap["mapValue"]; exists {
 				if mapMap, ok := mapVal.(map[string]interface{}); ok {
@@ -715,7 +811,15 @@ func (ops *DocumentOperations) GetDocument(ctx context.Context, projectID, datab
 		return nil, fmt.Errorf("failed to get document: %w", err)
 	}
 
-	return mongoFlatToModelDocument(&mongoDoc), nil
+	// Debug logging for GetDocument
+	fmt.Printf("[DEBUG GetDocument] Raw mongoDoc.Fields: %+v\n", mongoDoc.Fields)
+
+	modelDoc := mongoFlatToModelDocument(&mongoDoc)
+
+	// Debug logging after conversion
+	fmt.Printf("[DEBUG GetDocument] Converted modelDoc.Fields: %+v\n", modelDoc.Fields)
+
+	return modelDoc, nil
 }
 
 // GetDocumentByPath retrieves a document by path

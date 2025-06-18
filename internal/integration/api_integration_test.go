@@ -34,12 +34,12 @@ func RandString(n int) string {
 // Integration test for document routes
 func TestDocumentRoutes_Integration(t *testing.T) {
 	app := fiber.New()
-
 	// Usar el Usecase real con el mock centralizado para cumplir la interfaz
 	uc := usecase.NewFirestoreUsecase(
 		usecase.NewMockFirestoreRepo(),
 		nil, // securityRepo mock
 		nil, // queryEngine mock
+		nil, // projectionService mock
 		&usecase.MockLogger{},
 	)
 
@@ -135,11 +135,11 @@ func TestDocumentRoutes_Integration(t *testing.T) {
 // Integration test for collection routes
 func TestCollectionRoutes_Integration(t *testing.T) {
 	app := fiber.New()
-
 	uc := usecase.NewFirestoreUsecase(
 		usecase.NewMockFirestoreRepo(),
 		nil, // securityRepo mock
 		nil, // queryEngine mock
+		nil, // projectionService mock
 		&usecase.MockLogger{},
 	)
 
@@ -205,7 +205,7 @@ func TestCollectionRoutes_Integration(t *testing.T) {
 func TestIndexRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -238,7 +238,7 @@ func TestIndexRoutes_Integration(t *testing.T) {
 func TestBatchWriteRoute_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -258,7 +258,7 @@ func TestBatchWriteRoute_Integration(t *testing.T) {
 func TestTransactionRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -293,7 +293,7 @@ func TestTransactionRoutes_Integration(t *testing.T) {
 func TestAtomicRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		&usecase.MockFirestoreRepo{}, nil, nil, &usecase.MockLogger{},
+		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -398,7 +398,7 @@ func TestProjectRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	mockRepo := usecase.NewMockFirestoreRepo() // Use the correct mock constructor with package prefix
 	uc := usecase.NewFirestoreUsecase(
-		mockRepo, nil, nil, &usecase.MockLogger{},
+		mockRepo, nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -445,7 +445,7 @@ func TestProjectRoutes_Integration(t *testing.T) {
 func TestDatabaseRoutes_Integration(t *testing.T) {
 	app := fiber.New()
 	uc := usecase.NewFirestoreUsecase(
-		usecase.NewMockFirestoreRepo(), nil, nil, &usecase.MockLogger{}, // Use the correct mock constructor with package prefix
+		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{}, // Use the correct mock constructor with package prefix
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
@@ -495,3 +495,85 @@ func TestDatabaseRoutes_Integration(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, stdhttp.StatusNoContent, deleteResp.StatusCode)
 }
+
+// TestQueryWithProjectionIntegration tests that projection queries don't crash
+func TestQueryWithProjectionIntegration(t *testing.T) {
+	t.Run("Verify projection query API structure", func(t *testing.T) {
+		app := fiber.New()
+
+		// Use mock usecase
+		uc := usecase.NewFirestoreUsecase(
+			usecase.NewMockFirestoreRepo(),
+			nil, // securityRepo mock
+			nil, // queryEngine mock
+			nil, // projectionService mock
+			&usecase.MockLogger{},
+		)
+
+		h := &httpadapter.HTTPHandler{
+			FirestoreUC: uc,
+			Log:         &usecase.MockLogger{},
+		}
+
+		// Register query routes
+		setupQueryRoutes(app, h)
+
+		// Test that a query with projection is accepted and doesn't crash
+		queryPayload := map[string]interface{}{
+			"structuredQuery": map[string]interface{}{
+				"select": map[string]interface{}{
+					"fields": []map[string]interface{}{
+						{"fieldPath": "name"},
+						{"fieldPath": "available"},
+					},
+				},
+				"from": []map[string]interface{}{
+					{"collectionId": "products"},
+				},
+				"where": map[string]interface{}{
+					"fieldFilter": map[string]interface{}{
+						"field": map[string]interface{}{
+							"fieldPath": "available",
+						},
+						"op": "EQUAL",
+						"value": map[string]interface{}{
+							"booleanValue": true,
+						},
+					},
+				},
+			},
+		}
+
+		jsonPayload, err := json.Marshal(queryPayload)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest("POST", "/v1/projects/test-project/databases/(default)/documents:runQuery", strings.NewReader(string(jsonPayload)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("organization-id", "test-org")
+
+		resp, err := app.Test(req, 10000) // 10 second timeout
+		require.NoError(t, err)
+		defer resp.Body.Close()
+		// The key test: it should not return a 500 error due to type inference issues
+		require.NotEqual(t, stdhttp.StatusInternalServerError, resp.StatusCode,
+			"Query with projection should not fail with internal server error")
+	})
+}
+
+// Helper function to setup query routes for testing
+func setupQueryRoutes(app *fiber.App, h *httpadapter.HTTPHandler) {
+	v1 := app.Group("/v1")
+	projects := v1.Group("/projects/:projectId")
+	databases := projects.Group("/databases/:databaseId")
+	documents := databases.Group("/documents")
+
+	// Query endpoints
+	documents.Post(":runQuery", h.RunQuery)
+	documents.Post("*:runQuery", h.RunQuery)
+}
+
+// Helper functions for creating pointer values
+func StringPtr(s string) *string    { return &s }
+func BoolPtr(b bool) *bool          { return &b }
+func Int64Ptr(i int64) *int64       { return &i }
+func Float64Ptr(f float64) *float64 { return &f }

@@ -5,6 +5,7 @@ import (
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -12,17 +13,37 @@ import (
 )
 
 // FirestoreStructuredQuery represents the exact JSON format that Google Firestore expects
+// FirestoreQueryWrapper handles the outer wrapper that contains "structuredQuery"
+type FirestoreQueryWrapper struct {
+	StructuredQuery *FirestoreStructuredQuery `json:"structuredQuery,omitempty"`
+}
+
+// FirestoreCursor represents cursor pagination values in Firestore format
+type FirestoreCursor struct {
+	Values []interface{} `json:"values"`
+}
+
 type FirestoreStructuredQuery struct {
-	From    []FirestoreCollectionSelector `json:"from,omitempty"`
-	Where   *FirestoreFilter              `json:"where,omitempty"`
-	OrderBy []FirestoreOrder              `json:"orderBy,omitempty"`
-	Limit   int                           `json:"limit,omitempty"`
-	Offset  int                           `json:"offset,omitempty"`
+	From       []FirestoreCollectionSelector `json:"from,omitempty"`
+	Where      *FirestoreFilter              `json:"where,omitempty"`
+	OrderBy    []FirestoreOrder              `json:"orderBy,omitempty"`
+	Select     *FirestoreProjection          `json:"select,omitempty"`
+	Limit      int                           `json:"limit,omitempty"`
+	Offset     int                           `json:"offset,omitempty"`
+	StartAt    *FirestoreCursor              `json:"startAt,omitempty"`
+	StartAfter *FirestoreCursor              `json:"startAfter,omitempty"`
+	EndAt      *FirestoreCursor              `json:"endAt,omitempty"`
+	EndBefore  *FirestoreCursor              `json:"endBefore,omitempty"`
 }
 
 type FirestoreCollectionSelector struct {
 	CollectionID   string `json:"collectionId"`
 	AllDescendants bool   `json:"allDescendants,omitempty"`
+}
+
+// FirestoreProjection represents field selection in Firestore queries
+type FirestoreProjection struct {
+	Fields []FirestoreFieldReference `json:"fields"`
 }
 
 type FirestoreFilter struct {
@@ -140,9 +161,22 @@ func convertFirestoreValue(value interface{}) interface{} {
 			return nil
 		}
 	}
-
 	// If it's not a Firestore typed value, return as is
 	return value
+}
+
+// convertFirestoreCursorValues converts an array of Firestore typed values to their Go equivalents
+// This is used for cursor-based pagination (startAt, startAfter, endAt, endBefore)
+func convertFirestoreCursorValues(values []interface{}) []interface{} {
+	if values == nil {
+		return nil
+	}
+
+	converted := make([]interface{}, len(values))
+	for i, value := range values {
+		converted[i] = convertFirestoreValue(value)
+	}
+	return converted
 }
 
 // mapFirestoreOperator converts Firestore operator strings to internal operator types
@@ -253,14 +287,13 @@ func convertFirestoreFilter(filter FirestoreFilter) ([]model.Filter, error) {
 // convertFirestoreJSONToModelQuery converts the Firestore JSON format to our internal model
 func convertFirestoreJSONToModelQuery(firestoreQuery FirestoreStructuredQuery) (*model.Query, error) {
 	query := &model.Query{}
-
 	// Handle From clause
 	if len(firestoreQuery.From) > 0 {
 		query.CollectionID = firestoreQuery.From[0].CollectionID
 		// Handle collection group queries
 		if firestoreQuery.From[0].AllDescendants {
 			// For collection group queries, mark it appropriately
-			// This might need adjustment based on your model.Query structure
+			query.AllDescendants = true
 		}
 	}
 	// Handle Where clause
@@ -289,11 +322,32 @@ func convertFirestoreJSONToModelQuery(firestoreQuery FirestoreStructuredQuery) (
 	// Handle Limit
 	if firestoreQuery.Limit > 0 {
 		query.SetLimit(firestoreQuery.Limit)
-	}
-
-	// Handle Offset
+	} // Handle Offset
 	if firestoreQuery.Offset > 0 {
 		query.SetOffset(firestoreQuery.Offset)
+	}
+
+	// Handle Select clause (field projection)
+	if firestoreQuery.Select != nil && len(firestoreQuery.Select.Fields) > 0 {
+		selectFields := make([]string, len(firestoreQuery.Select.Fields))
+		for i, field := range firestoreQuery.Select.Fields {
+			selectFields[i] = field.FieldPath
+		}
+		query.SelectFields = selectFields
+	}
+
+	// Handle cursor-based pagination
+	if firestoreQuery.StartAt != nil {
+		query.StartAt = convertFirestoreCursorValues(firestoreQuery.StartAt.Values)
+	}
+	if firestoreQuery.StartAfter != nil {
+		query.StartAfter = convertFirestoreCursorValues(firestoreQuery.StartAfter.Values)
+	}
+	if firestoreQuery.EndAt != nil {
+		query.EndAt = convertFirestoreCursorValues(firestoreQuery.EndAt.Values)
+	}
+	if firestoreQuery.EndBefore != nil {
+		query.EndBefore = convertFirestoreCursorValues(firestoreQuery.EndBefore.Values)
 	}
 
 	return query, nil
@@ -426,16 +480,93 @@ func (h *HTTPHandler) DeleteDocument(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
+func (h *HTTPHandler) RunQuery(c *fiber.Ctx) error {
 	var req usecase.QueryRequest
 
 	// Parse path parameters
 	req.ProjectID = c.Params("projectID")
 	req.DatabaseID = c.Params("databaseID")
-	collectionTarget := c.Params("collectionID") // Collection from URL path
 
-	// Set parent path for RunQuery (should point to documents level + collection)
-	req.Parent = "projects/" + req.ProjectID + "/databases/" + req.DatabaseID + "/documents/" + collectionTarget
+	// Parse the Firestore JSON structured query from request body
+	var firestoreQueryWrapper FirestoreQueryWrapper
+
+	// Parse the request body as a wrapper containing structuredQuery
+	if err := c.BodyParser(&firestoreQueryWrapper); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_json",
+			"message": "Failed to parse request body: " + err.Error(),
+		})
+	}
+
+	// Validate that structuredQuery is present
+	if firestoreQueryWrapper.StructuredQuery == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_structured_query",
+			"message": "Request must contain a 'structuredQuery' field",
+		})
+	}
+
+	firestoreQuery := firestoreQueryWrapper.StructuredQuery
+
+	// Extract collection from the 'from' field as per Firestore API specification
+	var collectionTarget string
+	if len(firestoreQuery.From) > 0 {
+		collectionTarget = firestoreQuery.From[0].CollectionID
+	} else {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_collection",
+			"message": "structuredQuery must contain a 'from' field with collectionId",
+		})
+	}
+
+	// Set parent path for RunQuery (should point to documents level only, per Firestore API)
+	req.Parent = "projects/" + req.ProjectID + "/databases/" + req.DatabaseID + "/documents"
+
+	// Convert Firestore JSON to internal model.Query
+	log.Printf("[DEBUG RunQuery] About to convert firestoreQuery to model.Query. FirestoreQuery.Where: %+v", firestoreQuery.Where)
+	query, err := convertFirestoreJSONToModelQuery(*firestoreQuery)
+	if err != nil {
+		log.Printf("[ERROR RunQuery] Failed to convert Firestore query: %v", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_query_format",
+			"message": "Failed to convert Firestore query: " + err.Error()})
+	}
+	log.Printf("[DEBUG RunQuery] Successfully converted to model.Query. Filters count: %d", len(query.Filters))
+
+	// Set the collection info in the query
+	query.CollectionID = collectionTarget
+	query.Path = req.Parent
+
+	// Assign the structured query
+	req.StructuredQuery = query
+
+	// Execute the query
+	documents, err := h.FirestoreUC.RunQuery(c.UserContext(), req)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "query_failed",
+			"message": err.Error(),
+		})
+	}
+
+	// Return results in Firestore-compatible format
+	return c.JSON(fiber.Map{
+		"documents": documents,
+		"count":     len(documents),
+	})
+}
+
+// QueryDocuments is kept for backward compatibility (legacy endpoint)
+// This method maintains compatibility with the old /query/:collectionID endpoint
+func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
+	var req usecase.QueryRequest
+	// Parse path parameters
+	req.ProjectID = c.Params("projectID")
+	req.DatabaseID = c.Params("databaseID")
+	collectionTarget := c.Params("collectionID") // Collection from URL path
+	// Set parent path for RunQuery (should point to documents level only, per Firestore API)
+	req.Parent = "projects/" + req.ProjectID + "/databases/" + req.DatabaseID + "/documents"
+
 	// Parse the Firestore JSON structured query from request body
 	var firestoreQuery FirestoreStructuredQuery
 
@@ -486,23 +617,103 @@ func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
 				"message": "Failed to unmarshal fieldFilter: " + err.Error(),
 			})
 		}
-	} else {
-		// Try normal parsing for properly structured queries
-		if err := c.BodyParser(&firestoreQuery); err != nil {
+	} else if structuredQuery, exists := rawBody["structuredQuery"]; exists {
+		// Handle properly structured Firestore queries with "structuredQuery" wrapper
+		log.Printf("[DEBUG QueryDocuments] Found structuredQuery in request body")
+
+		structuredBytes, err := json.Marshal(structuredQuery)
+		if err != nil {
+			log.Printf("[ERROR QueryDocuments] Failed to marshal structuredQuery: %v", err)
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 				"error":   "invalid_structured_query",
-				"message": "Failed to parse Firestore structured query: " + err.Error(),
+				"message": "Failed to marshal structuredQuery: " + err.Error(),
+			})
+		}
+		log.Printf("[DEBUG QueryDocuments] Marshaled structuredQuery: %s", string(structuredBytes))
+
+		// Parse the structuredQuery content
+		var structuredContent map[string]interface{}
+		if err := json.Unmarshal(structuredBytes, &structuredContent); err != nil {
+			log.Printf("[ERROR QueryDocuments] Failed to unmarshal structuredQuery: %v", err)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "invalid_structured_query",
+				"message": "Failed to parse structuredQuery content: " + err.Error(),
+			})
+		}
+		log.Printf("[DEBUG QueryDocuments] Parsed structuredContent keys: %v", getKeys(structuredContent))
+
+		// Check if it has compositeFilter or fieldFilter inside structuredQuery
+		if compositeFilter, exists := structuredContent["compositeFilter"]; exists {
+			log.Printf("[DEBUG QueryDocuments] Found compositeFilter in structuredQuery")
+			firestoreQuery.Where = &FirestoreFilter{
+				CompositeFilter: &FirestoreCompositeFilter{},
+			}
+			compositeBytes, err := json.Marshal(compositeFilter)
+			if err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":   "invalid_structured_query",
+					"message": "Failed to marshal compositeFilter in structuredQuery: " + err.Error(),
+				})
+			}
+			if err := json.Unmarshal(compositeBytes, firestoreQuery.Where.CompositeFilter); err != nil {
+				log.Printf("[ERROR QueryDocuments] Failed to unmarshal compositeFilter: %v", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":   "invalid_structured_query",
+					"message": "Failed to unmarshal compositeFilter in structuredQuery: " + err.Error(),
+				})
+			}
+			log.Printf("[DEBUG QueryDocuments] Successfully processed compositeFilter")
+		} else if fieldFilter, exists := structuredContent["fieldFilter"]; exists {
+			log.Printf("[DEBUG QueryDocuments] Found fieldFilter in structuredQuery")
+			firestoreQuery.Where = &FirestoreFilter{
+				FieldFilter: &FirestoreFieldFilter{},
+			}
+			fieldBytes, err := json.Marshal(fieldFilter)
+			if err != nil {
+				log.Printf("[ERROR QueryDocuments] Failed to marshal fieldFilter: %v", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":   "invalid_structured_query",
+					"message": "Failed to marshal fieldFilter in structuredQuery: " + err.Error(),
+				})
+			}
+			if err := json.Unmarshal(fieldBytes, firestoreQuery.Where.FieldFilter); err != nil {
+				log.Printf("[ERROR QueryDocuments] Failed to unmarshal fieldFilter: %v", err)
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"error":   "invalid_structured_query",
+					"message": "Failed to unmarshal fieldFilter in structuredQuery: " + err.Error(),
+				})
+			}
+			log.Printf("[DEBUG QueryDocuments] Successfully processed fieldFilter")
+		} else {
+			log.Printf("[WARNING QueryDocuments] structuredQuery found but no compositeFilter or fieldFilter inside, keys: %v", getKeys(structuredContent))
+		}
+	} else {
+		// Try normal parsing for queries that are already in the correct format
+		rawBodyBytes, err := json.Marshal(rawBody)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "invalid_query",
+				"message": "Failed to marshal request body: " + err.Error(),
+			})
+		}
+		if err := json.Unmarshal(rawBodyBytes, &firestoreQuery); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error":   "invalid_query_format",
+				"message": "Failed to parse as FirestoreStructuredQuery: " + err.Error(),
 			})
 		}
 	}
 
 	// Convert Firestore JSON to internal model.Query
+	log.Printf("[DEBUG QueryDocuments] About to convert firestoreQuery to model.Query. FirestoreQuery.Where: %+v", firestoreQuery.Where)
 	query, err := convertFirestoreJSONToModelQuery(firestoreQuery)
 	if err != nil {
+		log.Printf("[ERROR QueryDocuments] Failed to convert Firestore query: %v", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":   "invalid_query_format",
 			"message": "Failed to convert Firestore query: " + err.Error()})
 	}
+	log.Printf("[DEBUG QueryDocuments] Successfully converted to model.Query. Filters count: %d", len(query.Filters))
 
 	// Set the collection info in the query
 	query.CollectionID = collectionTarget
@@ -511,7 +722,7 @@ func (h *HTTPHandler) QueryDocuments(c *fiber.Ctx) error {
 	// Assign the structured query
 	req.StructuredQuery = query
 
-	// Use RunQuery for Firestore structured queries (not QueryDocuments)
+	// Execute the query
 	documents, err := h.FirestoreUC.RunQuery(c.UserContext(), req)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -560,6 +771,260 @@ func (h *HTTPHandler) ListDocuments(c *fiber.Ctx) error {
 	})
 }
 
+// CreateDocumentInSubcollection handles creating documents in nested subcollections
+func (h *HTTPHandler) CreateDocumentInSubcollection(c *fiber.Ctx) error {
+	// Get all route parameters
+	allParams := c.AllParams()
+	fullURL := c.OriginalURL()
+	method := c.Method()
+	h.Log.Debug("SUBCOLLECTION HANDLER CALLED", "method", method, "fullURL", fullURL, "params", allParams)
+
+	// Build collection path from route parameters
+	collectionID, err := h.buildCollectionIDFromParams(allParams)
+	if err != nil {
+		h.Log.Error("Failed to build collection ID", "error", err, "params", allParams)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_path",
+			"message": fmt.Sprintf("Invalid subcollection path: %s", err.Error()),
+		})
+	}
+
+	h.Log.Debug("Built collection ID for subcollection", "collectionID", collectionID)
+
+	var req usecase.CreateDocumentRequest
+	req.ProjectID = c.Params("projectID")
+	req.DatabaseID = c.Params("databaseID")
+	req.CollectionID = collectionID
+	req.DocumentID = c.Query("documentId") // Optional from query params
+
+	// Parse request body
+	if err := c.BodyParser(&req.Data); err != nil {
+		h.Log.Error("Failed to parse request body", "error", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_request_body",
+			"message": "Failed to parse request body",
+		})
+	}
+
+	// Validate required fields
+	if req.Data == nil || len(req.Data) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_data",
+			"message": "Document data is required",
+		})
+	}
+	// Call usecase (standard method works for subcollections too)
+	document, err := h.FirestoreUC.CreateDocument(c.UserContext(), req)
+	if err != nil {
+		h.Log.Error("Failed to create document in subcollection", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "create_document_failed",
+			"message": err.Error(),
+		})
+	}
+
+	h.Log.Info("Document created successfully in subcollection", "documentID", document.DocumentID, "collectionID", collectionID)
+	return c.Status(fiber.StatusCreated).JSON(document)
+}
+
+// GetDocumentFromSubcollection handles getting documents from nested subcollections
+func (h *HTTPHandler) GetDocumentFromSubcollection(c *fiber.Ctx) error {
+	// Get all route parameters
+	allParams := c.AllParams()
+	h.Log.Debug("Getting document from subcollection", "params", allParams)
+
+	// Build collection path from route parameters
+	collectionID, err := h.buildCollectionIDFromParams(allParams)
+	if err != nil {
+		h.Log.Error("Failed to build collection ID", "error", err, "params", allParams)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_path",
+			"message": fmt.Sprintf("Invalid subcollection path: %s", err.Error()),
+		})
+	}
+
+	// Get document ID from parameters
+	documentID := h.getDocumentIDFromParams(allParams)
+	if documentID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_document_id",
+			"message": "Document ID is required",
+		})
+	}
+
+	req := usecase.GetDocumentRequest{
+		ProjectID:    c.Params("projectID"),
+		DatabaseID:   c.Params("databaseID"),
+		CollectionID: collectionID,
+		DocumentID:   documentID,
+	}
+
+	// Call usecase
+	document, err := h.FirestoreUC.GetDocument(c.UserContext(), req)
+	if err != nil {
+		h.Log.Error("Failed to get document from subcollection", "error", err)
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"error":   "document_not_found",
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(document)
+}
+
+// UpdateDocumentInSubcollection handles updating documents in nested subcollections
+func (h *HTTPHandler) UpdateDocumentInSubcollection(c *fiber.Ctx) error {
+	// Get the full path from wildcard
+	path := c.Params("*")
+	h.Log.Debug("Updating document in subcollection", "path", path)
+
+	// Parse the path using existing parser
+	pathInfo, err := h.parseSubcollectionPath(path)
+	if err != nil {
+		// If path parsing fails, try as standard document path
+		segments := strings.Split(strings.Trim(path, "/"), "/")
+		if len(segments) == 2 {
+			// Standard collection/document path - delegate to standard handler
+			return h.UpdateDocument(c)
+		}
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_path",
+			"message": fmt.Sprintf("Invalid path: %s", err.Error()),
+		})
+	}
+
+	// Only proceed if we have a document ID in the path
+	if pathInfo.DocumentID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_document_id",
+			"message": "Document ID is required for update",
+		})
+	}
+
+	var req usecase.UpdateDocumentRequest
+	req.ProjectID = c.Params("projectID")
+	req.DatabaseID = c.Params("databaseID")
+	req.CollectionID = pathInfo.CollectionID
+	req.DocumentID = pathInfo.DocumentID
+
+	// Parse request body
+	if err := c.BodyParser(&req.Data); err != nil {
+		h.Log.Error("Failed to parse request body", "error", err)
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_request_body",
+			"message": "Failed to parse request body",
+		})
+	}
+
+	// Call usecase
+	document, err := h.FirestoreUC.UpdateDocument(c.UserContext(), req)
+	if err != nil {
+		h.Log.Error("Failed to update document in subcollection", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "update_document_failed",
+			"message": err.Error(),
+		})
+	}
+
+	return c.JSON(document)
+}
+
+// DeleteDocumentFromSubcollection handles deleting documents from nested subcollections
+func (h *HTTPHandler) DeleteDocumentFromSubcollection(c *fiber.Ctx) error {
+	// Get the full path from wildcard
+	path := c.Params("*")
+	h.Log.Debug("Deleting document from subcollection", "path", path)
+
+	// Parse the path using existing parser
+	pathInfo, err := h.parseSubcollectionPath(path)
+	if err != nil {
+		// If path parsing fails, try as standard document path
+		segments := strings.Split(strings.Trim(path, "/"), "/")
+		if len(segments) == 2 {
+			// Standard collection/document path - delegate to standard handler
+			return h.DeleteDocument(c)
+		}
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "invalid_path",
+			"message": fmt.Sprintf("Invalid path: %s", err.Error()),
+		})
+	}
+
+	// Only proceed if we have a document ID in the path
+	if pathInfo.DocumentID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":   "missing_document_id",
+			"message": "Document ID is required for deletion",
+		})
+	}
+
+	req := usecase.DeleteDocumentRequest{
+		ProjectID:    c.Params("projectID"),
+		DatabaseID:   c.Params("databaseID"),
+		CollectionID: pathInfo.CollectionID,
+		DocumentID:   pathInfo.DocumentID,
+	} // Call usecase
+	err = h.FirestoreUC.DeleteDocument(c.UserContext(), req)
+	if err != nil {
+		h.Log.Error("Failed to delete document from subcollection", "error", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error":   "delete_document_failed",
+			"message": err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusNoContent).Send(nil)
+}
+
+// SubcollectionPathInfo holds parsed subcollection path information
+type SubcollectionPathInfo struct {
+	FullPath     string
+	CollectionID string
+	DocumentID   string
+	ParentPath   string
+}
+
+// parseSubcollectionPath parses a subcollection path like "productos/prod-001/reseñas" or "productos/prod-001/reseñas/res-abc"
+func (h *HTTPHandler) parseSubcollectionPath(path string) (*SubcollectionPathInfo, error) {
+	// Remove leading slash if present
+	path = strings.TrimPrefix(path, "/")
+
+	// Split the path into segments
+	segments := strings.Split(path, "/")
+
+	if len(segments) < 3 {
+		return nil, fmt.Errorf("subcollection path must have at least 3 segments: collection/document/subcollection")
+	}
+
+	// For a path like "productos/prod-001/reseñas" or "productos/prod-001/reseñas/res-abc"
+	// segments[0] = "productos" (parent collection)
+	// segments[1] = "prod-001" (parent document)
+	// segments[2] = "reseñas" (subcollection)
+	// segments[3] = "res-abc" (document in subcollection, optional)
+
+	parentCollection := segments[0]
+	parentDocument := segments[1]
+	subcollection := segments[2]
+
+	var documentID string
+	if len(segments) >= 4 {
+		documentID = segments[3]
+	}
+	// Build the actual collection name for MongoDB (subcollection path)
+	// This creates the collection path like "productos/prod-001/reseñas"
+	actualCollectionID := fmt.Sprintf("%s/%s/%s", parentCollection, parentDocument, subcollection)
+
+	// Build parent path for the subcollection
+	parentPath := fmt.Sprintf("%s/%s", parentCollection, parentDocument)
+
+	return &SubcollectionPathInfo{
+		FullPath:     path,
+		CollectionID: actualCollectionID, // Use the full subcollection path
+		DocumentID:   documentID,
+		ParentPath:   parentPath,
+	}, nil
+}
+
 // Helper to parse updateMask query param as []string (comma-separated)
 func parseUpdateMaskQuery(c *fiber.Ctx) []string {
 	maskParam := c.Query("updateMask")
@@ -572,4 +1037,69 @@ func parseUpdateMaskQuery(c *fiber.Ctx) []string {
 		fields[i] = strings.TrimSpace(fields[i])
 	}
 	return fields
+}
+
+// getKeys returns the keys of a map[string]interface{} for debugging purposes
+func getKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// buildCollectionIDFromParams builds the collection ID from Fiber route parameters
+// Handles both standard collection paths and subcollection paths
+func (h *HTTPHandler) buildCollectionIDFromParams(params map[string]string) (string, error) {
+	// Check if this is a subcollection pattern by counting parameters
+	// Standard pattern: collectionID, documentID
+	// Subcollection patterns: col1, doc1, col2 [, doc2] [, col3, doc3]
+
+	// Remove common parameters
+	filteredParams := make(map[string]string)
+	for k, v := range params {
+		if k != "organizationId" && k != "projectID" && k != "databaseID" && v != "" {
+			filteredParams[k] = v
+		}
+	}
+
+	// Determine pattern based on available parameters
+	if col1, ok := filteredParams["col1"]; ok {
+		// This is a subcollection pattern
+		doc1 := filteredParams["doc1"]
+		col2 := filteredParams["col2"]
+		doc2 := filteredParams["doc2"]
+		col3 := filteredParams["col3"]
+
+		if col3 != "" {
+			// Deep subcollection: col1/doc1/col2/doc2/col3
+			return fmt.Sprintf("%s/%s/%s/%s/%s", col1, doc1, col2, doc2, col3), nil
+		} else if col2 != "" {
+			// Single subcollection: col1/doc1/col2
+			return fmt.Sprintf("%s/%s/%s", col1, doc1, col2), nil
+		}
+		return "", fmt.Errorf("incomplete subcollection path")
+	}
+
+	// Check for standard collection pattern
+	if collectionID, ok := filteredParams["collectionID"]; ok {
+		return collectionID, nil
+	}
+
+	return "", fmt.Errorf("no valid collection pattern found in parameters")
+}
+
+// getDocumentIDFromParams extracts the document ID for subcollection operations
+func (h *HTTPHandler) getDocumentIDFromParams(params map[string]string) string {
+	// For subcollections, the document ID is the last parameter
+	if doc3 := params["doc3"]; doc3 != "" {
+		return doc3
+	}
+	if doc2 := params["doc2"]; doc2 != "" {
+		return doc2
+	}
+	if documentID := params["documentID"]; documentID != "" {
+		return documentID
+	}
+	return ""
 }

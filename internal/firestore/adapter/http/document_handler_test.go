@@ -1,17 +1,3 @@
-// Package http provides HTTP adapter tests for the Firestore clone service
-// following hexagonal architecture principles.
-//
-// This test file validates the HTTP adapter layer that translates between
-// Firestore REST API format and internal domain models. It ensures proper
-// handling of:
-// - Document CRUD operations via HTTP endpoints
-// - Firestore query format parsing and conversion
-// - Composite filter support (AND/OR operations)
-// - Error handling and HTTP status codes
-// - Value type conversion between Firestore and internal formats
-//
-// The tests follow the Firestore API specification to ensure compatibility
-// with Google Firestore client libraries.
 package http
 
 import (
@@ -109,6 +95,9 @@ func (m *MockFirestoreUCForDocuments) CreateProject(context.Context, usecase.Cre
 func (m *MockFirestoreUCForDocuments) GetProject(context.Context, usecase.GetProjectRequest) (*model.Project, error) {
 	return nil, nil
 }
+func (m *MockFirestoreUCForDocuments) UpdateProject(context.Context, usecase.UpdateProjectRequest) (*model.Project, error) {
+	return nil, nil
+}
 func (m *MockFirestoreUCForDocuments) DeleteProject(context.Context, usecase.DeleteProjectRequest) error {
 	return nil
 }
@@ -123,6 +112,9 @@ func (m *MockFirestoreUCForDocuments) GetDatabase(context.Context, usecase.GetDa
 }
 func (m *MockFirestoreUCForDocuments) DeleteDatabase(context.Context, usecase.DeleteDatabaseRequest) error {
 	return nil
+}
+func (m *MockFirestoreUCForDocuments) UpdateDatabase(context.Context, usecase.UpdateDatabaseRequest) (*model.Database, error) {
+	return nil, nil
 }
 func (m *MockFirestoreUCForDocuments) ListDatabases(context.Context, usecase.ListDatabasesRequest) ([]*model.Database, error) {
 	return nil, nil
@@ -153,12 +145,6 @@ func (m *MockFirestoreUCForDocuments) AtomicArrayRemove(context.Context, usecase
 }
 func (m *MockFirestoreUCForDocuments) AtomicServerTimestamp(context.Context, usecase.AtomicServerTimestampRequest) error {
 	return nil
-}
-func (m *MockFirestoreUCForDocuments) UpdateProject(context.Context, usecase.UpdateProjectRequest) (*model.Project, error) {
-	return nil, nil
-}
-func (m *MockFirestoreUCForDocuments) UpdateDatabase(context.Context, usecase.UpdateDatabaseRequest) (*model.Database, error) {
-	return nil, nil
 }
 
 // customDocumentUC extends MockFirestoreUCForDocuments for test-specific behavior
@@ -254,7 +240,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_Success(t *testing.T) {
 			// Verificar que el request está correctamente configurado
 			assert.Equal(t, "test-project", req.ProjectID)
 			assert.Equal(t, "test-database", req.DatabaseID)
-			assert.Equal(t, "projects/test-project/databases/test-database/documents/productos", req.Parent)
+			assert.Equal(t, "projects/test-project/databases/test-database/documents", req.Parent)
 			assert.NotNil(t, req.StructuredQuery)
 			assert.Equal(t, "productos", req.StructuredQuery.CollectionID)
 
@@ -825,4 +811,432 @@ func TestQueryDocumentsHandler_FirestoreJSON_ArrayFilter(t *testing.T) {
 	resp, err := app.Test(req)
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
+}
+
+// Tests para el nuevo endpoint RunQuery (estándar de Firestore)
+func TestRunQueryHandler_FirestoreJSON_Success(t *testing.T) {
+	app := fiber.New()
+	mockUC := &customQueryUC{
+		runQueryFunc: func(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
+			// Verificar que el request está correctamente configurado
+			assert.Equal(t, "test-project", req.ProjectID)
+			assert.Equal(t, "test-database", req.DatabaseID)
+			assert.Equal(t, "projects/test-project/databases/test-database/documents", req.Parent)
+			assert.NotNil(t, req.StructuredQuery)
+			// En el nuevo formato, la colección viene del campo 'from'
+			assert.Equal(t, "productos", req.StructuredQuery.CollectionID)
+
+			// Retornar documentos mock
+			return []*model.Document{
+				{DocumentID: "doc1"},
+				{DocumentID: "doc2"},
+			}, nil
+		},
+	}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
+
+	// JSON del formato oficial de Firestore con structuredQuery completo
+	firestoreQuery := `{
+		"structuredQuery": {
+			"from": [
+				{
+					"collectionId": "productos"
+				}
+			],
+			"where": {
+				"fieldFilter": {
+					"field": {
+						"fieldPath": "category"
+					},
+					"op": "EQUAL",
+					"value": {
+						"stringValue": "Electronics"
+					}
+				}
+			},
+			"orderBy": [
+				{
+					"field": {
+						"fieldPath": "name"
+					},
+					"direction": "ASCENDING"
+				}
+			],
+			"limit": 10
+		}
+	}`
+
+	req := httptest.NewRequest("POST", "/api/v1/organizations/test-org/projects/test-project/databases/test-database/documents:runQuery", bytes.NewReader([]byte(firestoreQuery)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	// Verificar la respuesta
+	assert.Contains(t, result, "documents")
+	assert.Contains(t, result, "count")
+	documents := result["documents"].([]interface{})
+	assert.Len(t, documents, 2)
+	assert.Equal(t, float64(2), result["count"])
+}
+
+func TestRunQueryHandler_FirestoreJSON_ComplexCompositeFilter(t *testing.T) {
+	app := fiber.New()
+	mockUC := &customQueryUC{
+		runQueryFunc: func(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
+			assert.Equal(t, "test-project", req.ProjectID)
+			assert.Equal(t, "test-database", req.DatabaseID)
+			assert.NotNil(t, req.StructuredQuery)
+			assert.Equal(t, "productos", req.StructuredQuery.CollectionID)
+
+			return []*model.Document{
+				{DocumentID: "doc1"},
+			}, nil
+		},
+	}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
+
+	// Query compleja con composite filter AND
+	firestoreQuery := `{
+		"structuredQuery": {
+			"from": [
+				{
+					"collectionId": "productos"
+				}
+			],
+			"where": {
+				"compositeFilter": {
+					"op": "AND",
+					"filters": [
+						{
+							"fieldFilter": {
+								"field": {
+									"fieldPath": "category"
+								},
+								"op": "EQUAL",
+								"value": {
+									"stringValue": "Electronics"
+								}
+							}
+						},
+						{
+							"fieldFilter": {
+								"field": {
+									"fieldPath": "stock"
+								},
+								"op": "GREATER_THAN",
+								"value": {
+									"doubleValue": 0
+								}
+							}
+						},
+						{
+							"fieldFilter": {
+								"field": {
+									"fieldPath": "available"
+								},
+								"op": "EQUAL",
+								"value": {
+									"booleanValue": true
+								}
+							}
+						}
+					]
+				}
+			},
+			"orderBy": [
+				{
+					"field": {
+						"fieldPath": "price"
+					},
+					"direction": "DESCENDING"
+				}
+			],
+			"limit": 5
+		}
+	}`
+
+	req := httptest.NewRequest("POST", "/api/v1/organizations/test-org/projects/test-project/databases/test-database/documents:runQuery", bytes.NewReader([]byte(firestoreQuery)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+
+	assert.Contains(t, result, "documents")
+	documents := result["documents"].([]interface{})
+	assert.Len(t, documents, 1)
+}
+
+func TestRunQueryHandler_FirestoreJSON_MissingFromClause(t *testing.T) {
+	app := fiber.New()
+	mockUC := &customQueryUC{}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
+
+	// Query sin cláusula 'from' - debe fallar
+	firestoreQuery := `{
+		"structuredQuery": {
+			"where": {
+				"fieldFilter": {
+					"field": {
+						"fieldPath": "category"
+					},
+					"op": "EQUAL",
+					"value": {
+						"stringValue": "Electronics"
+					}
+				}
+			}
+		}
+	}`
+
+	req := httptest.NewRequest("POST", "/api/v1/organizations/test-org/projects/test-project/databases/test-database/documents:runQuery", bytes.NewReader([]byte(firestoreQuery)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	assert.NoError(t, err)
+	assert.Contains(t, result, "error")
+}
+
+func TestRunQueryHandler_FirestoreJSON_InvalidJSON(t *testing.T) {
+	app := fiber.New()
+	mockUC := &customQueryUC{}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
+
+	invalidJSON := `{
+		"structuredQuery": {
+			"from": [
+				{
+					"collectionId": "productos"
+				}
+			],
+			"where": {
+				"fieldFilter": {
+					// Comment invalido en JSON
+				}
+			}
+		}
+	}`
+
+	req := httptest.NewRequest("POST", "/api/v1/organizations/test-org/projects/test-project/databases/test-database/documents:runQuery", bytes.NewReader([]byte(invalidJSON)))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+}
+
+func TestRunQueryHandler_FirestoreJSON_UsecaseError(t *testing.T) {
+	app := fiber.New()
+	mockUC := &MockFirestoreUCForDocuments{
+		RunQueryFn: func(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
+			return nil, errors.New("query execution failed")
+		},
+	}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+
+	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
+
+	body := []byte(`{
+		"structuredQuery": {
+			"from": [{
+				"collectionId": "productos2"
+			}],
+			"where": {
+				"fieldFilter": {
+					"field": {"fieldPath": "available"},
+					"op": "EQUAL",
+					"value": {"booleanValue": true}
+				}
+			}
+		}
+	}`)
+
+	req := httptest.NewRequest("POST", "/test/p1/d1/documents:runQuery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 500, resp.StatusCode)
+
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, "query_failed", result["error"])
+}
+
+// Tests específicos para el nuevo endpoint RunQuery (Firestore API oficial)
+func TestRunQueryHandler_Success(t *testing.T) {
+	app := fiber.New()
+	mockUC := &MockFirestoreUCForDocuments{
+		RunQueryFn: func(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
+			// Verificar que la colección se extrajo correctamente del campo "from"
+			assert.Equal(t, "productos2", req.StructuredQuery.CollectionID)
+			return []*model.Document{
+				{DocumentID: "doc1", Fields: map[string]*model.FieldValue{}},
+				{DocumentID: "doc2", Fields: map[string]*model.FieldValue{}},
+			}, nil
+		},
+	}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+
+	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
+
+	body := []byte(`{
+		"structuredQuery": {
+			"from": [{
+				"collectionId": "productos2"
+			}],
+			"where": {
+				"fieldFilter": {
+					"field": {"fieldPath": "available"},
+					"op": "EQUAL",
+					"value": {"booleanValue": true}
+				}
+			}
+		}
+	}`)
+
+	req := httptest.NewRequest("POST", "/test/p1/d1/documents:runQuery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(2), result["count"])
+	assert.NotNil(t, result["documents"])
+}
+
+func TestRunQueryHandler_MissingStructuredQuery(t *testing.T) {
+	app := fiber.New()
+	mockUC := &MockFirestoreUCForDocuments{}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+
+	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
+
+	body := []byte(`{
+		"someOtherField": "value"
+	}`)
+
+	req := httptest.NewRequest("POST", "/test/p1/d1/documents:runQuery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, "missing_structured_query", result["error"])
+}
+
+func TestRunQueryHandler_MissingFromField(t *testing.T) {
+	app := fiber.New()
+	mockUC := &MockFirestoreUCForDocuments{}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+
+	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
+
+	body := []byte(`{
+		"structuredQuery": {
+			"where": {
+				"fieldFilter": {
+					"field": {"fieldPath": "available"},
+					"op": "EQUAL",
+					"value": {"booleanValue": true}
+				}
+			}
+		}
+	}`)
+
+	req := httptest.NewRequest("POST", "/test/p1/d1/documents:runQuery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 400, resp.StatusCode)
+
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, "missing_collection", result["error"])
+}
+
+func TestRunQueryHandler_ComplexQuery(t *testing.T) {
+	app := fiber.New()
+	mockUC := &MockFirestoreUCForDocuments{
+		RunQueryFn: func(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
+			// Verificar que es una consulta compuesta
+			assert.NotNil(t, req.StructuredQuery)
+			assert.Equal(t, "inventario", req.StructuredQuery.CollectionID)
+			return []*model.Document{
+				{DocumentID: "product1", Fields: map[string]*model.FieldValue{}},
+			}, nil
+		},
+	}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+
+	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
+
+	// Consulta compleja con múltiples filtros y ordenamiento
+	body := []byte(`{
+		"structuredQuery": {
+			"from": [{
+				"collectionId": "inventario"
+			}],
+			"where": {
+				"compositeFilter": {
+					"op": "AND",
+					"filters": [
+						{
+							"fieldFilter": {
+								"field": {"fieldPath": "category"},
+								"op": "EQUAL",
+								"value": {"stringValue": "Electronics"}
+							}
+						},
+						{
+							"fieldFilter": {
+								"field": {"fieldPath": "stock"},
+								"op": "GREATER_THAN",
+								"value": {"doubleValue": 0}
+							}
+						}
+					]
+				}
+			},
+			"orderBy": [
+				{
+					"field": {"fieldPath": "price"},
+					"direction": "DESCENDING"
+				}
+			],
+			"limit": 5
+		}
+	}`)
+
+	req := httptest.NewRequest("POST", "/test/p1/d1/documents:runQuery", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	var result map[string]interface{}
+	_ = json.NewDecoder(resp.Body).Decode(&result)
+	assert.Equal(t, float64(1), result["count"])
 }

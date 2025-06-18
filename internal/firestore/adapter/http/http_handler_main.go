@@ -60,16 +60,26 @@ func (h *HTTPHandler) RegisterRoutes(router fiber.Router) {
 	orgAPI := router.Group("/organizations/:organizationId", TenantMiddleware())
 	projectAPI := orgAPI.Group("/projects/:projectID", ProjectMiddleware())
 	dbAPI := projectAPI.Group("/databases/:databaseID", ValidateFirestoreHierarchy())
-
 	// Register domain-specific routes
+	// Note: Atomic routes must come before document routes to avoid route conflicts
+	h.registerAtomicRoutes(dbAPI)
 	h.registerDocumentRoutes(dbAPI)
 	h.registerCollectionRoutes(dbAPI)
 	h.registerIndexRoutes(dbAPI)
 	h.registerBatchRoutes(dbAPI)
 	h.registerTransactionRoutes(dbAPI)
-	h.registerAtomicRoutes(dbAPI)
 	h.registerProjectRoutes(orgAPI)      // Projects should be at org level
 	h.registerDatabaseRoutes(projectAPI) // Databases should be at project level
+
+	// Debug route to verify router is working
+	router.All("/debug/*", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"message": "Debug route reached",
+			"path":    c.Params("*"),
+			"method":  c.Method(),
+			"url":     c.OriginalURL(),
+		})
+	})
 }
 
 // registerOrganizationRoutes handles organization-level routes
@@ -82,12 +92,28 @@ func (h *HTTPHandler) registerOrganizationRoutes(app *fiber.App) {
 }
 
 // registerDocumentRoutes registers document-related endpoints
+// registerDocumentRoutes registers document-related endpoints
 func (h *HTTPHandler) registerDocumentRoutes(router fiber.Router) {
+	// Query endpoints (most specific routes first)
+	router.Post("/documents:runQuery", h.RunQuery)        // Firestore-compliant query endpoint
+	router.Post("/query/:collectionID", h.QueryDocuments) // Legacy endpoint for backward compatibility
+
+	// Specific subcollection routes (most specific first)
+	router.Post("/documents/:col1/:doc1/:col2/:doc2/:col3", h.CreateDocumentInSubcollection)     // 5 segments - deep subcollection
+	router.Get("/documents/:col1/:doc1/:col2/:doc2/:col3/:doc3", h.GetDocumentFromSubcollection) // 6 segments
+	router.Put("/documents/:col1/:doc1/:col2/:doc2/:col3/:doc3", h.UpdateDocumentInSubcollection)
+	router.Delete("/documents/:col1/:doc1/:col2/:doc2/:col3/:doc3", h.DeleteDocumentFromSubcollection)
+
+	router.Post("/documents/:col1/:doc1/:col2", h.CreateDocumentInSubcollection)     // 3 segments - single subcollection
+	router.Get("/documents/:col1/:doc1/:col2/:doc2", h.GetDocumentFromSubcollection) // 4 segments
+	router.Put("/documents/:col1/:doc1/:col2/:doc2", h.UpdateDocumentInSubcollection)
+	router.Delete("/documents/:col1/:doc1/:col2/:doc2", h.DeleteDocumentFromSubcollection)
+
+	// Standard document endpoints
 	router.Post("/documents/:collectionID", h.CreateDocument)
 	router.Get("/documents/:collectionID/:documentID", h.GetDocument)
 	router.Put("/documents/:collectionID/:documentID", h.UpdateDocument)
 	router.Delete("/documents/:collectionID/:documentID", h.DeleteDocument)
-	router.Post("/query/:collectionID", h.QueryDocuments)
 	router.Get("/documents/:collectionID", h.ListDocuments) // List all documents in a collection
 }
 

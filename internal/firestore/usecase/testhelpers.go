@@ -1,5 +1,3 @@
-// Centralized test helpers for Firestore usecase tests
-// Place all shared mocks and helpers here to avoid redeclaration errors.
 package usecase
 
 import (
@@ -450,4 +448,120 @@ func (m *MockAuthClient) GetUserByID(ctx context.Context, userID string, project
 		return m.user, nil
 	}
 	return nil, fmt.Errorf("user not found")
+}
+
+// MockQueryEngine implements QueryEngine for testing
+type MockQueryEngine struct{}
+
+func NewMockQueryEngine() *MockQueryEngine {
+	return &MockQueryEngine{}
+}
+
+func (m *MockQueryEngine) ExecuteQuery(ctx context.Context, collectionPath string, query model.Query) ([]*model.Document, error) {
+	// Return a mock document that matches the query
+	return []*model.Document{
+		{
+			DocumentID: "mock-doc-1",
+			Fields: map[string]*model.FieldValue{
+				"name":      model.NewFieldValue("Test Product"),
+				"available": model.NewFieldValue(true),
+				"price":     model.NewFieldValue(99.99),
+			},
+		},
+	}, nil
+}
+
+func (m *MockQueryEngine) ExecuteQueryWithProjection(ctx context.Context, collectionPath string, query model.Query, projection []string) ([]*model.Document, error) {
+	return m.ExecuteQuery(ctx, collectionPath, query)
+}
+
+func (m *MockQueryEngine) CountDocuments(ctx context.Context, collectionPath string, query model.Query) (int64, error) {
+	return 1, nil
+}
+
+func (m *MockQueryEngine) ValidateQuery(query model.Query) error {
+	return nil
+}
+
+func (m *MockQueryEngine) GetQueryCapabilities() repository.QueryCapabilities {
+	return repository.QueryCapabilities{
+		SupportsNestedFields:     true,
+		SupportsArrayContains:    true,
+		SupportsArrayContainsAny: true,
+		SupportsCompositeFilters: true,
+		SupportsOrderBy:          true,
+		SupportsCursorPagination: true,
+		SupportsOffsetPagination: true,
+		SupportsProjection:       true,
+		MaxFilterCount:           30,
+		MaxOrderByCount:          3,
+		MaxNestingDepth:          10,
+	}
+}
+
+// MockProjectionService implements ProjectionService for testing
+type MockProjectionService struct{}
+
+func NewMockProjectionService() *MockProjectionService {
+	return &MockProjectionService{}
+}
+
+func (m *MockProjectionService) ApplyProjection(documents []*model.Document, selectFields []string) []*model.Document {
+	if len(selectFields) == 0 {
+		return documents
+	}
+
+	// Apply projection by filtering fields
+	projectedDocs := make([]*model.Document, len(documents))
+	for i, doc := range documents {
+		projectedDoc := &model.Document{
+			DocumentID: doc.DocumentID,
+			Fields:     make(map[string]*model.FieldValue),
+		}
+
+		// Copy only selected fields
+		for _, field := range selectFields {
+			if value, exists := doc.Fields[field]; exists {
+				projectedDoc.Fields[field] = value
+			}
+		}
+
+		projectedDocs[i] = projectedDoc
+	}
+
+	return projectedDocs
+}
+
+func (m *MockProjectionService) ValidateProjectionFields(fields []string) error {
+	return nil
+}
+
+func (m *MockProjectionService) IsProjectionRequired(fields []string) bool {
+	return len(fields) > 0
+}
+
+// MockSecurityRulesEngine implements SecurityRulesEngine for testing
+type MockSecurityRulesEngine struct{}
+
+func NewMockSecurityRulesEngine() *MockSecurityRulesEngine {
+	return &MockSecurityRulesEngine{}
+}
+
+func (m *MockSecurityRulesEngine) EvaluateAccess(ctx context.Context, operation repository.OperationType, securityContext *repository.SecurityContext) (*repository.RuleEvaluationResult, error) {
+	return &repository.RuleEvaluationResult{
+		Allowed: true,
+		Reason:  "Mock allowed",
+	}, nil
+}
+
+func (m *MockSecurityRulesEngine) LoadRules(ctx context.Context, projectID, databaseID string) ([]*repository.SecurityRule, error) {
+	return []*repository.SecurityRule{}, nil
+}
+
+func (m *MockSecurityRulesEngine) SaveRules(ctx context.Context, projectID, databaseID string, rules []*repository.SecurityRule) error {
+	return nil
+}
+
+func (m *MockSecurityRulesEngine) ValidateRules(rules []*repository.SecurityRule) error {
+	return nil
 }

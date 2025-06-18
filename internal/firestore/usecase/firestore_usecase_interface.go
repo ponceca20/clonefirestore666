@@ -6,6 +6,7 @@ import (
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/domain/repository"
+	"firestore-clone/internal/firestore/domain/service"
 	"firestore-clone/internal/shared/logger"
 )
 
@@ -70,10 +71,11 @@ type FirestoreUsecaseInterface interface {
 
 // FirestoreUsecase implements Firestore business logic con arquitectura optimizada (colecciones dinámicas)
 type FirestoreUsecase struct {
-	firestoreRepo repository.FirestoreRepository // Debe ser el tenant-aware repo optimizado
-	securityRepo  repository.SecurityRulesEngine
-	queryEngine   repository.QueryEngine
-	logger        logger.Logger
+	firestoreRepo     repository.FirestoreRepository // Debe ser el tenant-aware repo optimizado
+	securityRepo      repository.SecurityRulesEngine
+	queryEngine       repository.QueryEngine
+	projectionService service.ProjectionService
+	logger            logger.Logger
 }
 
 // NewFirestoreUsecase crea un nuevo FirestoreUsecase SOLO con arquitectura optimizada
@@ -81,12 +83,14 @@ func NewFirestoreUsecase(
 	firestoreRepo repository.FirestoreRepository,
 	securityRepo repository.SecurityRulesEngine,
 	queryEngine repository.QueryEngine,
+	projectionService service.ProjectionService,
 	logger logger.Logger,
 ) FirestoreUsecaseInterface {
 	return &FirestoreUsecase{
-		firestoreRepo: firestoreRepo,
-		securityRepo:  securityRepo,
-		queryEngine:   queryEngine,
-		logger:        logger,
+		firestoreRepo:     firestoreRepo,
+		securityRepo:      securityRepo,
+		queryEngine:       queryEngine,
+		projectionService: projectionService,
+		logger:            logger,
 	}
 }

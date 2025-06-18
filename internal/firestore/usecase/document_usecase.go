@@ -126,10 +126,11 @@ func (uc *FirestoreUsecase) RunQuery(ctx context.Context, req QueryRequest) ([]*
 	if req.StructuredQuery == nil {
 		return nil, fmt.Errorf("structured query is required")
 	}
-
-	// Extract collection ID from parent path or use structured query info
+	// Extract collection ID from structured query or parent path
 	var collectionID string
-	if req.Parent != "" {
+	if req.StructuredQuery.CollectionID != "" {
+		collectionID = req.StructuredQuery.CollectionID
+	} else if req.Parent != "" {
 		// Parse parent path to extract collection
 		pathInfo, err := firestore.ParseFirestorePath(req.Parent)
 		if err != nil {
@@ -140,16 +141,38 @@ func (uc *FirestoreUsecase) RunQuery(ctx context.Context, req QueryRequest) ([]*
 			collectionID = segments[0]
 		}
 	}
-
 	// Use QueryEngine if available, otherwise fallback to repository
+	var docs []*model.Document
+	var err error
+
 	if uc.queryEngine != nil {
 		uc.logger.Debug("Using QueryEngine for query execution", "collectionID", collectionID)
-		return uc.queryEngine.ExecuteQuery(ctx, collectionID, *req.StructuredQuery)
+
+		// Check if projection is needed
+		if len(req.StructuredQuery.SelectFields) > 0 {
+			uc.logger.Debug("Using projection-aware query execution", "selectFields", req.StructuredQuery.SelectFields)
+			docs, err = uc.queryEngine.ExecuteQueryWithProjection(ctx, collectionID, *req.StructuredQuery, req.StructuredQuery.SelectFields)
+		} else {
+			docs, err = uc.queryEngine.ExecuteQuery(ctx, collectionID, *req.StructuredQuery)
+		}
+	} else {
+		// Fallback to repository method
+		uc.logger.Debug("Using Repository for query execution", "collectionID", collectionID)
+		docs, err = uc.firestoreRepo.RunQuery(ctx, req.ProjectID, req.DatabaseID, collectionID, req.StructuredQuery)
+
+		// Apply projection if needed and projection service is available
+		if err == nil && len(req.StructuredQuery.SelectFields) > 0 && uc.projectionService != nil {
+			uc.logger.Debug("Applying projection via service", "selectFields", req.StructuredQuery.SelectFields)
+
+			// Validate projection fields
+			if validationErr := uc.projectionService.ValidateProjectionFields(req.StructuredQuery.SelectFields); validationErr != nil {
+				return nil, fmt.Errorf("invalid projection fields: %w", validationErr)
+			}
+
+			docs = uc.projectionService.ApplyProjection(docs, req.StructuredQuery.SelectFields)
+		}
 	}
 
-	// Fallback to repository method
-	uc.logger.Debug("Using Repository for query execution", "collectionID", collectionID)
-	docs, err := uc.firestoreRepo.RunQuery(ctx, req.ProjectID, req.DatabaseID, collectionID, req.StructuredQuery)
 	if err != nil {
 		uc.logger.Error("Failed to run query", "error", err)
 		return nil, fmt.Errorf("failed to run query: %w", err)

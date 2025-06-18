@@ -7,6 +7,7 @@ import (
 	"firestore-clone/internal/firestore/config"
 	"firestore-clone/internal/firestore/domain/client"
 	"firestore-clone/internal/firestore/domain/repository" // May keep for interfaces
+	"firestore-clone/internal/firestore/domain/service"
 	"firestore-clone/internal/firestore/usecase"
 	"firestore-clone/internal/shared/database"
 	"firestore-clone/internal/shared/eventbus"
@@ -83,8 +84,12 @@ func NewFirestoreModule(
 	realtimeUC := usecase.NewRealtimeUsecase(log)
 	securityUC := usecase.NewSecurityUsecase(securityRulesEngine, log)
 
-	// Initialize FirestoreUsecase with tenant-aware repository
-	firestoreUC := usecase.NewFirestoreUsecase(tenantAwareRepo, securityRulesEngine, queryEngine, log)
+	// Initialize projection service
+	projectionService := service.NewProjectionService()
+	log.Info("ProjectionService initialized successfully.")
+
+	// Initialize FirestoreUsecase with tenant-aware repository and projection service
+	firestoreUC := usecase.NewFirestoreUsecase(tenantAwareRepo, securityRulesEngine, queryEngine, projectionService, log)
 
 	// Initialize OrganizationHandler
 	orgHandler := httpadapter.NewOrganizationHandler(orgRepo)
@@ -151,13 +156,16 @@ func NewFirestoreModuleWithConfig(
 	// Initialize security rules engine
 	securityRulesEngine := mongodbpersistence.NewSecurityRulesEngine(masterDB, log)
 	log.Info("SecurityRulesEngine initialized successfully.")
-
 	// Initialize use cases
 	realtimeUC := usecase.NewRealtimeUsecase(log)
 	securityUC := usecase.NewSecurityUsecase(securityRulesEngine, log)
 
-	// Initialize FirestoreUsecase with tenant-aware repository
-	firestoreUC := usecase.NewFirestoreUsecase(tenantAwareRepo, securityRulesEngine, queryEngine, log)
+	// Initialize projection service
+	projectionService2 := service.NewProjectionService()
+	log.Info("ProjectionService initialized successfully.")
+
+	// Initialize FirestoreUsecase with tenant-aware repository and projection service
+	firestoreUC := usecase.NewFirestoreUsecase(tenantAwareRepo, securityRulesEngine, queryEngine, projectionService2, log)
 
 	// Initialize OrganizationHandler
 	orgHandler := httpadapter.NewOrganizationHandler(orgRepo)

@@ -16,6 +16,7 @@ func newTestFirestoreUsecase() FirestoreUsecaseInterface {
 		NewMockFirestoreRepo(), // Mock aislado por test
 		nil,
 		nil,
+		nil, // Projection service
 		&MockLogger{},
 	)
 }
