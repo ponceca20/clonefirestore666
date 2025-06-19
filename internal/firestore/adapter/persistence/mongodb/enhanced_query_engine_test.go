@@ -589,7 +589,7 @@ func TestEnhancedQueryEngineTypeInferenceComparison(t *testing.T) {
 			mainFilter := mainEngine.singleMongoFilter(filter)
 
 			// Test enhanced engine filter building (with mock context)
-			enhancedFilter, err := enhancedEngine.buildSingleFilterWithContext(nil, "", filter)
+			enhancedFilter, err := enhancedEngine.buildSingleFilterWithContext(context.TODO(), "", filter)
 			require.NoError(t, err)
 
 			// Both engines should produce the same filter structure for the same input
@@ -621,7 +621,7 @@ func TestEnhancedQueryEngineWithProjection_IntegrationStyle(t *testing.T) {
 
 	// Test building the filter with context (simulates real execution)
 	// Note: Using empty context and collection path for this test
-	filterBSON, err := engine.buildEnhancedMongoFilterWithContext(nil, "", query.Filters)
+	filterBSON, err := engine.buildEnhancedMongoFilterWithContext(context.TODO(), "", query.Filters)
 	require.NoError(t, err)
 
 	// The filter should be built successfully
@@ -686,7 +686,7 @@ func TestEnhancedQueryEngineArrayOperations(t *testing.T) {
 			}
 
 			// Test filter building with type inference
-			filterBSON, err := engine.buildSingleFilterWithContext(nil, "", filter)
+			filterBSON, err := engine.buildSingleFilterWithContext(context.TODO(), "", filter)
 
 			if tc.expectErr {
 				assert.Error(t, err)
@@ -747,7 +747,7 @@ func TestEnhancedQueryEngineCompositeFilters(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			filterBSON, err := engine.buildCompositeFilterWithContext(nil, "", tc.filter)
+			filterBSON, err := engine.buildCompositeFilterWithContext(context.TODO(), "", tc.filter)
 			assert.NoError(t, err)
 			assert.NotEmpty(t, filterBSON)
 			t.Logf("Composite filter %s: %+v", tc.name, filterBSON)

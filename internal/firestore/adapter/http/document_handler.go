@@ -372,9 +372,8 @@ func (h *HTTPHandler) CreateDocument(c *fiber.Ctx) error {
 			"message": "Failed to parse request body",
 		})
 	}
-
-	// Validate required fields - check if data is nil or empty map
-	if req.Data == nil || len(req.Data) == 0 {
+	// Validate required fields - check if data is empty
+	if len(req.Data) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":   "missing_data",
 			"message": "Document data is required",
@@ -481,6 +480,8 @@ func (h *HTTPHandler) DeleteDocument(c *fiber.Ctx) error {
 }
 
 func (h *HTTPHandler) RunQuery(c *fiber.Ctx) error {
+	log.Printf("[DEBUG RunQuery] Handler called - Path: %s, Method: %s", c.Path(), c.Method())
+
 	var req usecase.QueryRequest
 
 	// Parse path parameters
@@ -805,9 +806,8 @@ func (h *HTTPHandler) CreateDocumentInSubcollection(c *fiber.Ctx) error {
 			"message": "Failed to parse request body",
 		})
 	}
-
 	// Validate required fields
-	if req.Data == nil || len(req.Data) == 0 {
+	if len(req.Data) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error":   "missing_data",
 			"message": "Document data is required",

@@ -88,6 +88,9 @@ func (m *ProjectMockFirestoreUC) QueryDocuments(context.Context, usecase.QueryRe
 func (m *ProjectMockFirestoreUC) RunQuery(context.Context, usecase.QueryRequest) ([]*model.Document, error) {
 	return nil, nil
 }
+func (m *ProjectMockFirestoreUC) RunAggregationQuery(context.Context, usecase.AggregationQueryRequest) (*usecase.AggregationQueryResponse, error) {
+	return &usecase.AggregationQueryResponse{}, nil
+}
 func (m *ProjectMockFirestoreUC) RunBatchWrite(context.Context, usecase.BatchWriteRequest) (*model.BatchWriteResponse, error) {
 	return nil, nil
 }
@@ -190,7 +193,7 @@ func TestCreateProjectHandler_Success(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	requestBody := map[string]interface{}{
@@ -219,7 +222,7 @@ func TestCreateProjectHandler_Success(t *testing.T) {
 func TestCreateProjectHandler_MissingOrganizationID(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customProjectUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	// Route without organizationId parameter
 	app.Post("/projects", h.CreateProject)
@@ -248,7 +251,7 @@ func TestCreateProjectHandler_MissingOrganizationID(t *testing.T) {
 func TestCreateProjectHandler_MissingProjectInBody(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customProjectUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	// Request without project field
@@ -273,7 +276,7 @@ func TestCreateProjectHandler_MissingProjectInBody(t *testing.T) {
 func TestCreateProjectHandler_InvalidRequestBody(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customProjectUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	// Invalid JSON
@@ -298,7 +301,7 @@ func TestCreateProjectHandler_ValidationError(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	requestBody := map[string]interface{}{
@@ -331,7 +334,7 @@ func TestCreateProjectHandler_ConflictError(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	requestBody := map[string]interface{}{
@@ -363,7 +366,7 @@ func TestCreateProjectHandler_InternalError(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/organizations/:organizationId/projects", h.CreateProject)
 
 	requestBody := map[string]interface{}{
@@ -405,7 +408,7 @@ func TestGetProjectHandler_Success(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects/:projectID", h.GetProject)
 
 	req := httptest.NewRequest("GET", "/organizations/test-org-456/projects/test-project-123", nil)
@@ -428,7 +431,7 @@ func TestGetProjectHandler_NotFound(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects/:projectID", h.GetProject)
 
 	req := httptest.NewRequest("GET", "/organizations/test-org/projects/nonexistent-project", nil)
@@ -450,7 +453,7 @@ func TestGetProjectHandler_InternalError(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects/:projectID", h.GetProject)
 
 	req := httptest.NewRequest("GET", "/organizations/test-org/projects/test-project", nil)
@@ -475,7 +478,7 @@ func TestListProjectsHandler_Success(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects", h.ListProjects)
 
 	req := httptest.NewRequest("GET", "/organizations/my-org/projects?ownerEmail=test@example.com", nil)
@@ -496,7 +499,7 @@ func TestListProjectsHandler_Success(t *testing.T) {
 func TestListProjectsHandler_MissingOrganizationID(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customProjectUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects", h.ListProjects)
 
 	// Test with empty organization ID - Fiber treats this as route not found
@@ -523,7 +526,7 @@ func TestListProjectsHandler_UsecaseError(t *testing.T) {
 		},
 	}
 
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Get("/organizations/:organizationId/projects", h.ListProjects)
 
 	req := httptest.NewRequest("GET", "/organizations/my-org/projects", nil)

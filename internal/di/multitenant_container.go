@@ -18,6 +18,7 @@ import (
 	"firestore-clone/internal/shared/eventbus"
 	"firestore-clone/internal/shared/logger"
 
+	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -27,6 +28,7 @@ type MultitenantContainer struct {
 	mongoClient   *mongo.Client
 	masterDB      *mongo.Database
 	tenantManager *database.TenantManager
+	redisClient   *redis.Client
 
 	// Configuration
 	authConfig      *authconfig.Config
@@ -72,7 +74,13 @@ func NewMultitenantContainer(
 	// Initialize event bus
 	container.eventBus = eventbus.NewEventBus(log)
 
-	// Initialize components
+	// Initialize Redis client using Firestore configuration
+	container.redisClient = firestoreconfig.NewRedisClient(&firestoreCfg.Redis)
+	log.Info("Redis client initialized with configuration",
+		"host", firestoreCfg.Redis.Host,
+		"port", firestoreCfg.Redis.Port,
+		"database", firestoreCfg.Redis.Database)
+
 	if err := container.initializeAuthComponents(); err != nil {
 		return nil, fmt.Errorf("failed to initialize auth components: %w", err)
 	}
@@ -137,12 +145,13 @@ func (c *MultitenantContainer) initializeFirestoreComponents() error {
 	// Initialize auth client
 	c.authClient = firestoreauthclient.NewSimpleAuthClient()
 
-	// Initialize Firestore module
+	// Initialize Firestore module with Redis support
 	firestoreMod, err := firestoremodule.NewFirestoreModule(
 		c.authClient,
 		c.logger,
 		c.mongoClient,
 		c.masterDB,
+		c.redisClient, // Add Redis client for distributed event storage
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create firestore module: %w", err)
@@ -226,6 +235,11 @@ func (c *MultitenantContainer) Close() error {
 	// Close tenant manager
 	if c.tenantManager != nil {
 		c.tenantManager.Close()
+	}
+
+	// Close Redis client
+	if c.redisClient != nil {
+		c.redisClient.Close()
 	}
 
 	return nil

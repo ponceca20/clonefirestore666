@@ -41,6 +41,9 @@ type FirestoreUsecaseInterface interface {
 	QueryDocuments(ctx context.Context, req QueryRequest) ([]*model.Document, error)
 	RunQuery(ctx context.Context, req QueryRequest) ([]*model.Document, error)
 
+	// Aggregation operations
+	RunAggregationQuery(ctx context.Context, req AggregationQueryRequest) (*AggregationQueryResponse, error)
+
 	// Batch operations
 	RunBatchWrite(ctx context.Context, req BatchWriteRequest) (*model.BatchWriteResponse, error)
 

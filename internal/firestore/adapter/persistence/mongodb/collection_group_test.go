@@ -437,21 +437,18 @@ func extractIntegerValue(t *testing.T, field *model.FieldValue) int64 {
 		}
 		if intVal, ok := field.Value.(int); ok {
 			return int64(intVal)
-		}
-		// Try to convert from interface{}
-		if val, ok := field.Value.(interface{}); ok {
-			switch v := val.(type) {
-			case int64:
-				return v
-			case int32:
-				return int64(v)
-			case int:
-				return int64(v)
-			case float64:
-				return int64(v)
-			case float32:
-				return int64(v)
-			}
+		} // Try to convert from interface{} - field.Value is already interface{}
+		switch v := field.Value.(type) {
+		case int64:
+			return v
+		case int32:
+			return int64(v)
+		case int:
+			return int64(v)
+		case float64:
+			return int64(v)
+		case float32:
+			return int64(v)
 		}
 		t.Fatalf("field value is not a valid integer: %v (type: %T)", field.Value, field.Value)
 	default:

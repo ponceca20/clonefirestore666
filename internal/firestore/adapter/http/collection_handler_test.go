@@ -38,7 +38,7 @@ func TestCreateCollectionHandler_Success(t *testing.T) {
 			return &model.Collection{CollectionID: "c1"}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateCollection)
 
 	body := []byte(`{"collectionId":"c1"}`)
@@ -56,7 +56,7 @@ func TestCreateCollectionHandler_Success(t *testing.T) {
 func TestCreateCollectionHandler_MissingCollectionID(t *testing.T) {
 	app := fiber.New()
 	mockUC := &testFirestoreUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	// Use route with optional collectionID parameter
 	app.Post("/test/:projectID/:databaseID/:collectionID?", h.CreateCollection)
 
@@ -78,7 +78,7 @@ func TestCreateCollectionHandler_UsecaseError(t *testing.T) {
 			return nil, errors.New("internal error")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateCollection)
 
 	body := []byte(`{"collectionId":"c1"}`)

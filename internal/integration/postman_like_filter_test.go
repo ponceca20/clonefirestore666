@@ -326,6 +326,9 @@ func (m *PostmanLikeMockUsecase) DeleteIndex(ctx context.Context, req usecase.De
 func (m *PostmanLikeMockUsecase) RunBatchWrite(ctx context.Context, req usecase.BatchWriteRequest) (*model.BatchWriteResponse, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+func (m *PostmanLikeMockUsecase) RunAggregationQuery(ctx context.Context, req usecase.AggregationQueryRequest) (*usecase.AggregationQueryResponse, error) {
+	return nil, fmt.Errorf("not implemented")
+}
 
 // extractPrimitiveValue extracts the primitive value from a Firestore-style value
 func extractPrimitiveValue(value interface{}) interface{} {

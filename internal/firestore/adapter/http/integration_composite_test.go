@@ -20,7 +20,6 @@ import (
 
 	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
-	"firestore-clone/internal/shared/logger"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +43,10 @@ func (m *MockFirestoreUCForComposite) QueryDocuments(ctx context.Context, req us
 func (m *MockFirestoreUCForComposite) RunQuery(ctx context.Context, req usecase.QueryRequest) ([]*model.Document, error) {
 	args := m.Called(ctx, req)
 	return args.Get(0).([]*model.Document), args.Error(1)
+}
+
+func (m *MockFirestoreUCForComposite) RunAggregationQuery(ctx context.Context, req usecase.AggregationQueryRequest) (*usecase.AggregationQueryResponse, error) {
+	return &usecase.AggregationQueryResponse{}, nil
 }
 
 // Implement remaining interface methods as no-ops for compliance with usecase.FirestoreUsecaseInterface
@@ -141,28 +144,11 @@ func (m *MockFirestoreUCForComposite) AtomicServerTimestamp(ctx context.Context,
 	return nil
 }
 
-// compositeTestLogger provides logging for composite filter tests
-type compositeTestLogger struct{}
-
-func (l compositeTestLogger) Debug(args ...interface{})                              {}
-func (l compositeTestLogger) Info(args ...interface{})                               {}
-func (l compositeTestLogger) Warn(args ...interface{})                               {}
-func (l compositeTestLogger) Error(args ...interface{})                              {}
-func (l compositeTestLogger) Fatal(args ...interface{})                              {}
-func (l compositeTestLogger) Debugf(format string, args ...interface{})              {}
-func (l compositeTestLogger) Infof(format string, args ...interface{})               {}
-func (l compositeTestLogger) Warnf(format string, args ...interface{})               {}
-func (l compositeTestLogger) Errorf(format string, args ...interface{})              {}
-func (l compositeTestLogger) Fatalf(format string, args ...interface{})              {}
-func (l compositeTestLogger) WithFields(fields map[string]interface{}) logger.Logger { return l }
-func (l compositeTestLogger) WithContext(ctx context.Context) logger.Logger          { return l }
-func (l compositeTestLogger) WithComponent(component string) logger.Logger           { return l }
-
 func TestQueryDocuments_CompositeFilterAND_PriceRange(t *testing.T) {
 	// Test the exact query that was failing: price >= 50 AND price <= 500
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForComposite{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: compositeTestLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	// Set up the route
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
@@ -255,7 +241,7 @@ func TestQueryDocuments_CompositeFilterAND_ThreeConditions(t *testing.T) {
 	// Test the three-condition AND query that was failing
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForComposite{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: compositeTestLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
@@ -345,7 +331,7 @@ func TestQueryDocuments_CompositeFilterAND_CategoryAndAvailable(t *testing.T) {
 	// Test the category + available query that was failing
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForComposite{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: compositeTestLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
@@ -428,7 +414,7 @@ func TestQueryDocuments_SimpleFieldFilter_StillWorks(t *testing.T) {
 	// Verify that simple field filters still work (this was working before)
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForComposite{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: compositeTestLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 

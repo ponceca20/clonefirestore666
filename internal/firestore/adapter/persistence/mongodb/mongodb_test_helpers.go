@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"firestore-clone/internal/firestore/domain/model"
 	"firestore-clone/internal/firestore/usecase"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -416,28 +415,6 @@ func (m *mockCursor) Decode(val interface{}) error                       { retur
 func (m *mockCursor) Close(ctx context.Context) error                    { return nil }
 func (m *mockCursor) Err() error                                         { return nil }
 func (m *mockCursor) All(ctx context.Context, results interface{}) error { return nil }
-
-// newTestDocumentRepositoryMockWithStore returns a DocumentRepository with a provided shared in-memory store for DocumentOperations.
-func newTestDocumentRepositoryMockWithStore(store map[string]*model.Document) *DocumentRepository {
-	mockStore := newMockDocumentStore()
-	mockCol := &mockCollectionWithStore{store: mockStore}
-	mockDB := &mockDatabaseProviderForOps{store: mockStore}
-
-	repo := &DocumentRepository{
-		db:             mockDB,
-		logger:         &usecase.MockLogger{}, // Initialize the logger to prevent nil pointer dereference
-		documentsCol:   mockCol,
-		collectionsCol: mockCol,
-	}
-	docOps := NewDocumentOperationsWithStore(repo, store)
-	repo.documentOps = docOps
-	return repo
-}
-
-// newTestDocumentRepositoryMock returns a DocumentRepository with a new in-memory store for DocumentOperations.
-func newTestDocumentRepositoryMock() *DocumentRepository {
-	return newTestDocumentRepositoryMockWithStore(make(map[string]*model.Document))
-}
 
 // mockDatabaseProviderForOps implements DatabaseProvider for document operations tests
 type mockDatabaseProviderForOps struct {

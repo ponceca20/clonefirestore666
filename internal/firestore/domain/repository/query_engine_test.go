@@ -124,6 +124,54 @@ func (m *mockQueryEngine) GetQueryCapabilities() QueryCapabilities {
 	return m.capabilities
 }
 
+// ExecuteAggregationPipeline implements QueryEngine interface
+func (m *mockQueryEngine) ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error) {
+	if m.shouldError {
+		return nil, errors.New(m.errorMessage)
+	}
+
+	// For testing, return a simple aggregation result
+	return []map[string]interface{}{
+		{
+			"_id":   "group1",
+			"count": int64(5),
+			"sum":   100.0,
+			"avg":   20.0,
+		},
+	}, nil
+}
+
+// BuildMongoFilter implements QueryEngine interface
+func (m *mockQueryEngine) BuildMongoFilter(filters []model.Filter) (interface{}, error) {
+	if m.shouldError {
+		return nil, errors.New(m.errorMessage)
+	}
+
+	// For testing, return a simple filter representation
+	if len(filters) == 0 {
+		return map[string]interface{}{}, nil
+	}
+
+	// Build a simple mock filter for testing
+	result := map[string]interface{}{}
+	for _, filter := range filters {
+		switch filter.Operator {
+		case model.OperatorEqual:
+			result[filter.Field] = filter.Value
+		case model.OperatorGreaterThan:
+			result[filter.Field] = map[string]interface{}{"$gt": filter.Value}
+		case model.OperatorLessThan:
+			result[filter.Field] = map[string]interface{}{"$lt": filter.Value}
+		case model.OperatorArrayContains:
+			result[filter.Field] = map[string]interface{}{"$in": []interface{}{filter.Value}}
+		default:
+			result[filter.Field] = filter.Value
+		}
+	}
+
+	return result, nil
+}
+
 // Helper methods for testing
 
 // withDocuments allows setting mock documents for testing
@@ -559,4 +607,245 @@ func BenchmarkQueryEngine_CountDocuments(b *testing.B) {
 			b.Fatalf("Unexpected error: %v", err)
 		}
 	}
+}
+
+// BenchmarkQueryEngine_ExecuteAggregationPipeline benchmarks the aggregation pipeline execution
+func BenchmarkQueryEngine_ExecuteAggregationPipeline(b *testing.B) {
+	engine := newMockQueryEngine()
+	ctx := context.Background()
+	pipeline := []interface{}{
+		map[string]interface{}{
+			"$group": map[string]interface{}{
+				"_id":   "$category",
+				"count": map[string]interface{}{"$sum": 1},
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := engine.ExecuteAggregationPipeline(ctx, "test-project", "test-db", "facturas", pipeline)
+		if err != nil {
+			b.Fatalf("Unexpected error: %v", err)
+		}
+	}
+}
+
+// BenchmarkQueryEngine_BuildMongoFilter benchmarks the filter building
+func BenchmarkQueryEngine_BuildMongoFilter(b *testing.B) {
+	engine := newMockQueryEngine()
+	filters := []model.Filter{
+		{
+			Field:    "status",
+			Operator: model.OperatorEqual,
+			Value:    "paid",
+		},
+		{
+			Field:    "amount",
+			Operator: model.OperatorGreaterThan,
+			Value:    100.0,
+		},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := engine.BuildMongoFilter(filters)
+		if err != nil {
+			b.Fatalf("Unexpected error: %v", err)
+		}
+	}
+}
+
+// TestQueryEngine_ExecuteAggregationPipeline tests the aggregation pipeline functionality
+func TestQueryEngine_ExecuteAggregationPipeline(t *testing.T) {
+	t.Run("Success", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		ctx := context.Background()
+
+		pipeline := []interface{}{
+			map[string]interface{}{
+				"$match": map[string]interface{}{
+					"status": "paid",
+				},
+			},
+			map[string]interface{}{
+				"$group": map[string]interface{}{
+					"_id":   "$category",
+					"count": map[string]interface{}{"$sum": 1},
+					"total": map[string]interface{}{"$sum": "$amount"},
+				},
+			},
+		}
+
+		result, err := engine.ExecuteAggregationPipeline(ctx, "test-project", "test-db", "facturas", pipeline)
+
+		assert.NoError(t, err)
+		assert.NotEmpty(t, result)
+		assert.Contains(t, result[0], "_id")
+		assert.Contains(t, result[0], "count")
+	})
+
+	t.Run("Error", func(t *testing.T) {
+		engine := newMockQueryEngine().withError("aggregation failed")
+		ctx := context.Background()
+
+		pipeline := []interface{}{
+			map[string]interface{}{"$match": map[string]interface{}{"status": "paid"}},
+		}
+
+		result, err := engine.ExecuteAggregationPipeline(ctx, "test-project", "test-db", "facturas", pipeline)
+
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "aggregation failed")
+	})
+
+	t.Run("EmptyPipeline", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		ctx := context.Background()
+
+		pipeline := []interface{}{}
+
+		result, err := engine.ExecuteAggregationPipeline(ctx, "test-project", "test-db", "facturas", pipeline)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+	})
+}
+
+// TestQueryEngine_BuildMongoFilter tests the MongoDB filter building functionality
+func TestQueryEngine_BuildMongoFilter(t *testing.T) {
+	t.Run("NoFilters", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		expectedFilter := map[string]interface{}{}
+		assert.Equal(t, expectedFilter, result)
+	})
+
+	t.Run("SingleEqualFilter", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{
+			{
+				Field:    "status",
+				Operator: model.OperatorEqual,
+				Value:    "paid",
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		expectedFilter := map[string]interface{}{
+			"status": "paid",
+		}
+		assert.Equal(t, expectedFilter, result)
+	})
+
+	t.Run("GreaterThanFilter", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{
+			{
+				Field:    "amount",
+				Operator: model.OperatorGreaterThan,
+				Value:    100.0,
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		expectedFilter := map[string]interface{}{
+			"amount": map[string]interface{}{"$gt": 100.0},
+		}
+		assert.Equal(t, expectedFilter, result)
+	})
+
+	t.Run("LessThanFilter", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{
+			{
+				Field:    "amount",
+				Operator: model.OperatorLessThan,
+				Value:    1000.0,
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		expectedFilter := map[string]interface{}{
+			"amount": map[string]interface{}{"$lt": 1000.0},
+		}
+		assert.Equal(t, expectedFilter, result)
+	})
+
+	t.Run("ArrayContainsFilter", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{
+			{
+				Field:    "tags",
+				Operator: model.OperatorArrayContains,
+				Value:    "important",
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+		expectedFilter := map[string]interface{}{
+			"tags": map[string]interface{}{"$in": []interface{}{"important"}},
+		}
+		assert.Equal(t, expectedFilter, result)
+	})
+
+	t.Run("MultipleFilters", func(t *testing.T) {
+		engine := newMockQueryEngine()
+		filters := []model.Filter{
+			{
+				Field:    "status",
+				Operator: model.OperatorEqual,
+				Value:    "paid",
+			},
+			{
+				Field:    "amount",
+				Operator: model.OperatorGreaterThan,
+				Value:    100.0,
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.NoError(t, err)
+		assert.NotNil(t, result)
+
+		resultMap := result.(map[string]interface{})
+		assert.Equal(t, "paid", resultMap["status"])
+		assert.Equal(t, map[string]interface{}{"$gt": 100.0}, resultMap["amount"])
+	})
+
+	t.Run("Error", func(t *testing.T) {
+		engine := newMockQueryEngine().withError("filter build failed")
+		filters := []model.Filter{
+			{
+				Field:    "status",
+				Operator: model.OperatorEqual,
+				Value:    "paid",
+			},
+		}
+
+		result, err := engine.BuildMongoFilter(filters)
+
+		assert.Error(t, err)
+		assert.Nil(t, result)
+		assert.Contains(t, err.Error(), "filter build failed")
+	})
 }

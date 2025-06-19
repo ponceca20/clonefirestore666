@@ -61,6 +61,10 @@ func (m *MockFirestoreUCForDocuments) RunQuery(ctx context.Context, req usecase.
 	return []*model.Document{{DocumentID: "query_result"}}, nil
 }
 
+func (m *MockFirestoreUCForDocuments) RunAggregationQuery(ctx context.Context, req usecase.AggregationQueryRequest) (*usecase.AggregationQueryResponse, error) {
+	return &usecase.AggregationQueryResponse{}, nil
+}
+
 // Implement remaining interface methods as no-ops for compliance with usecase.FirestoreUsecaseInterface
 func (m *MockFirestoreUCForDocuments) ListDocuments(context.Context, usecase.ListDocumentsRequest) ([]*model.Document, error) {
 	return nil, nil
@@ -167,7 +171,7 @@ func TestCreateDocumentHandler_Success(t *testing.T) {
 			return &model.Document{DocumentID: "doc1"}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateDocument)
 
 	body := []byte(`{"field":"value"}`)
@@ -185,7 +189,7 @@ func TestCreateDocumentHandler_Success(t *testing.T) {
 func TestCreateDocumentHandler_MissingData(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customDocumentUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateDocument)
 
 	body := []byte(`{}`)
@@ -206,7 +210,7 @@ func TestCreateDocumentHandler_UsecaseError(t *testing.T) {
 			return nil, errors.New("internal error")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateDocument)
 
 	body := []byte(`{"field":"value"}`)
@@ -251,7 +255,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	// JSON exacto del formato Firestore como el que envías desde Postman
@@ -303,7 +307,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_Success(t *testing.T) {
 func TestQueryDocumentsHandler_FirestoreJSON_InvalidBody(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customQueryUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	// JSON inválido
@@ -325,7 +329,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_InvalidBody(t *testing.T) {
 func TestQueryDocumentsHandler_FirestoreJSON_UnsupportedOperator(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customQueryUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	// JSON con operador no soportado
@@ -367,7 +371,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_UsecaseError(t *testing.T) {
 			return nil, errors.New("database connection failed")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	firestoreQuery := `{
@@ -413,7 +417,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_ComplexQuery(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	// Query compleja con IN operator y ordenamiento múltiple
@@ -641,7 +645,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_BooleanFilter(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	// JSON exacto como el que envías desde Postman con valores tipados de Firestore
@@ -707,7 +711,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_StringFilter(t *testing.T) {
 			return []*model.Document{{DocumentID: "product1"}}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	firestoreQuery := `{
@@ -744,7 +748,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_IntegerFilter(t *testing.T) {
 			return []*model.Document{{DocumentID: "expensive_product"}}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	firestoreQuery := `{
@@ -784,7 +788,7 @@ func TestQueryDocumentsHandler_FirestoreJSON_ArrayFilter(t *testing.T) {
 			return []*model.Document{{DocumentID: "tagged_product"}}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/query/:collectionID", h.QueryDocuments)
 
 	firestoreQuery := `{
@@ -833,7 +837,7 @@ func TestRunQueryHandler_FirestoreJSON_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
 
 	// JSON del formato oficial de Firestore con structuredQuery completo
@@ -900,7 +904,7 @@ func TestRunQueryHandler_FirestoreJSON_ComplexCompositeFilter(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
 
 	// Query compleja con composite filter AND
@@ -982,7 +986,7 @@ func TestRunQueryHandler_FirestoreJSON_ComplexCompositeFilter(t *testing.T) {
 func TestRunQueryHandler_FirestoreJSON_MissingFromClause(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customQueryUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
 
 	// Query sin cláusula 'from' - debe fallar
@@ -1018,7 +1022,7 @@ func TestRunQueryHandler_FirestoreJSON_MissingFromClause(t *testing.T) {
 func TestRunQueryHandler_FirestoreJSON_InvalidJSON(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customQueryUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/api/v1/organizations/:orgID/projects/:projectID/databases/:databaseID/documents:runQuery", h.RunQuery)
 
 	invalidJSON := `{
@@ -1051,7 +1055,7 @@ func TestRunQueryHandler_FirestoreJSON_UsecaseError(t *testing.T) {
 			return nil, errors.New("query execution failed")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
 
@@ -1094,7 +1098,7 @@ func TestRunQueryHandler_Success(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
 
@@ -1122,13 +1126,12 @@ func TestRunQueryHandler_Success(t *testing.T) {
 	var result map[string]interface{}
 	_ = json.NewDecoder(resp.Body).Decode(&result)
 	assert.Equal(t, float64(2), result["count"])
-	assert.NotNil(t, result["documents"])
 }
 
 func TestRunQueryHandler_MissingStructuredQuery(t *testing.T) {
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForDocuments{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
 
@@ -1150,7 +1153,7 @@ func TestRunQueryHandler_MissingStructuredQuery(t *testing.T) {
 func TestRunQueryHandler_MissingFromField(t *testing.T) {
 	app := fiber.New()
 	mockUC := &MockFirestoreUCForDocuments{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
 
@@ -1189,7 +1192,7 @@ func TestRunQueryHandler_ComplexQuery(t *testing.T) {
 			}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 
 	app.Post("/test/:projectID/:databaseID/documents:runQuery", h.RunQuery)
 

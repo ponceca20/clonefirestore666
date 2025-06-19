@@ -1,0 +1,32 @@
+{
+  "structuredAggregationQuery": {
+    "structuredQuery": {
+      "from": [{ "collectionId": "productos2" }],
+      "where": {
+        "fieldFilter": {
+          "field": { "fieldPath": "brand" },
+          "op": "EQUAL",
+          "value": { "stringValue": "TechMaster" }
+        }
+      }
+    },
+    "aggregations": [
+      {
+        "alias": "precio_minimo_techmaster",
+        "min": {
+          "field": { "fieldPath": "price" }
+        }
+      },
+      {
+        "alias": "precio_maximo_techmaster",
+        "max": {
+          "field": { "fieldPath": "price" }
+        }
+      },
+      {
+        "alias": "conteo_productos_techmaster",
+        "count": {}
+      }
+    ]
+  }
+}

@@ -100,7 +100,6 @@ func main() {
 
 	// Monitoring endpoint
 	app.Get("/metrics", monitor.New(monitor.Config{Title: "Firestore Clone Metrics"}))
-
 	// Register module routes
 	api := app.Group("/api/v1")
 
@@ -110,8 +109,9 @@ func main() {
 	// Organization routes (admin API, REST, CRUD)
 	firestoreModule.OrganizationHandler.RegisterRoutes(api)
 
-	// Firestore routes (tenant-aware)
-	firestoreModule.RegisterRoutes(api)
+	// Firestore routes (tenant-aware) - Pass auth middleware for WebSocket authentication
+	authMiddleware := authModule.GetMiddleware()
+	firestoreModule.RegisterRoutes(api, authMiddleware)
 
 	// Start background services
 	go func() {

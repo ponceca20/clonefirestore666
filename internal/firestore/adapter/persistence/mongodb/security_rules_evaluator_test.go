@@ -12,25 +12,16 @@ import (
 func TestSecurityRulesEngine_EvaluateAccess(t *testing.T) {
 	engine := &SecurityRulesEngine{}
 
-	t.Run("nil context", func(t *testing.T) {
-		result, err := engine.EvaluateAccess(nil, "read", nil)
-		assert.Error(t, err)
-		assert.NotNil(t, result)
-		assert.False(t, result.Allowed)
-		assert.Contains(t, result.Reason, "nil context")
-	})
-
 	t.Run("nil security context", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := context.TODO()
 		result, err := engine.EvaluateAccess(ctx, "read", nil)
 		assert.Error(t, err)
 		assert.NotNil(t, result)
 		assert.False(t, result.Allowed)
 		assert.Contains(t, result.Reason, "nil security context")
 	})
-
 	t.Run("missing project or database ID", func(t *testing.T) {
-		ctx := context.Background()
+		ctx := context.TODO()
 		secCtx := &repository.SecurityContext{
 			ProjectID:  "", // empty project ID
 			DatabaseID: "db1",

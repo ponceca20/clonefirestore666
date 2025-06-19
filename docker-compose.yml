@@ -1,10 +1,7 @@
 # Docker Compose configuration for Firestore Clone
-# Task 5: Complete development and production setup
-
 version: '3.8'
 
 services:
-  # MongoDB database service
   mongodb:
     image: mongo:7.0
     container_name: firestore-mongo
@@ -27,7 +24,6 @@ services:
       retries: 3
       start_period: 40s
 
-  # Firestore Clone application
   firestore-clone:
     build:
       context: .
@@ -37,20 +33,23 @@ services:
     ports:
       - "3000:3000"
     environment:
-      # Server configuration
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 3000
-      
-      # Database configuration
       MONGODB_URI: mongodb://admin:Ponceca120@mongodb:27017/firestore_clone?authSource=admin
       DATABASE_NAME: firestore_clone
-      
-      # Authentication configuration
       JWT_SECRET: your-super-secure-jwt-secret-change-in-production
       JWT_EXPIRATION: 24h
       BCRYPT_COST: 12
-      
-      # Logging configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: redispassword
+      REDIS_DB: 0
+      REDIS_MAX_RETRIES: 3
+      REDIS_POOL_SIZE: 10
+      REDIS_CONN_MAX_IDLE_TIME: 30m
+      REDIS_CONN_MAX_LIFETIME: 1h
+      WEBSOCKET_PATH: /ws/v1/listen
+      CLIENT_SEND_CHANNEL_BUFFER: 10
       LOG_LEVEL: info
       LOG_FORMAT: json
     volumes:
@@ -60,6 +59,8 @@ services:
     depends_on:
       mongodb:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
@@ -67,25 +68,33 @@ services:
       retries: 3
       start_period: 40s
 
-  # Redis for caching (optional for future enhancement)
   redis:
     image: redis:7.2-alpine
     container_name: firestore-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
-    command: redis-server --appendonly yes --requirepass redispassword
+    command: >
+      redis-server 
+      --appendonly yes 
+      --requirepass redispassword
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
     volumes:
       - redis_data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
     networks:
       - firestore-network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "-a", "redispassword", "ping"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
 
-  # MongoDB Express for database management (development only)
   mongo-express:
     image: mongo-express:1.0.0
     container_name: firestore-mongo-express
@@ -105,7 +114,6 @@ services:
     profiles:
       - development
 
-  # Nginx reverse proxy for production
   nginx:
     image: nginx:1.25-alpine
     container_name: firestore-nginx
@@ -124,13 +132,11 @@ services:
     profiles:
       - production
 
-# Networks
 networks:
   firestore-network:
     driver: bridge
     name: firestore-network
 
-# Volumes
 volumes:
   mongodb_data:
     name: firestore_mongodb_data

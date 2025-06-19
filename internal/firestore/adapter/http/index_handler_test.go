@@ -37,7 +37,7 @@ func TestCreateIndexHandler_Success(t *testing.T) {
 			return &model.Index{Name: "idx1"}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateIndex)
 
 	body := []byte(`{"index":{"collection":"c1"}}`)
@@ -59,7 +59,7 @@ func TestCreateIndexHandler_UsecaseError(t *testing.T) {
 			return nil, errors.New("internal error")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID/:databaseID/:collectionID", h.CreateIndex)
 
 	body := []byte(`{"index":{"collection":"c1"}}`)

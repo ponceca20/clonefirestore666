@@ -765,3 +765,51 @@ func (e *EnhancedMongoQueryEngine) determineFirestoreFieldType(fieldMap bson.M) 
 	// Default fallback
 	return model.FieldTypeString
 }
+
+// BuildMongoFilter builds a MongoDB filter from Firestore filters (implementa repository.QueryEngine)
+func (e *EnhancedMongoQueryEngine) BuildMongoFilter(filters []model.Filter) (interface{}, error) {
+	if len(filters) == 0 {
+		return bson.M{}, nil
+	}
+
+	// Use the enhanced filter building method without context (for aggregation pipeline building)
+	mongoFilter, err := e.buildEnhancedMongoFilterWithContext(context.Background(), "", filters)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build enhanced mongo filter: %w", err)
+	}
+
+	return mongoFilter, nil
+}
+
+// ExecuteAggregationPipeline executes a MongoDB aggregation pipeline (implementa repository.QueryEngine)
+func (e *EnhancedMongoQueryEngine) ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error) {
+	log.Printf("[EnhancedMongoQueryEngine] Executing aggregation pipeline on collection: %s", collectionPath)
+	log.Printf("[EnhancedMongoQueryEngine] Pipeline: %+v", pipeline)
+
+	collection := e.db.Collection(collectionPath)
+
+	// Ejecutar el pipeline de agregación
+	cursor, err := collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute aggregation pipeline: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	// Recopilar todos los resultados
+	var results []map[string]interface{}
+	for cursor.Next(ctx) {
+		var result map[string]interface{}
+		if err := cursor.Decode(&result); err != nil {
+			log.Printf("[EnhancedMongoQueryEngine] Warning: failed to decode aggregation result: %v", err)
+			continue
+		}
+		results = append(results, result)
+	}
+
+	if err := cursor.Err(); err != nil {
+		return nil, fmt.Errorf("aggregation cursor error: %w", err)
+	}
+
+	log.Printf("[EnhancedMongoQueryEngine] Aggregation completed. Results count: %d", len(results))
+	return results, nil
+}

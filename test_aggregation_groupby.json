@@ -1,0 +1,28 @@
+{
+  "structuredAggregationQuery": {
+    "structuredQuery": {
+      "from": [{ "collectionId": "productos2" }]
+    },
+    "groupBy": [
+      { "fieldPath": "brand" }
+    ],
+    "aggregations": [
+      {
+        "alias": "conteo_productos",
+        "count": {}
+      },
+      {
+        "alias": "precio_promedio",
+        "avg": {
+          "field": { "fieldPath": "price" }
+        }
+      },
+      {
+        "alias": "stock_total_marca",
+        "sum": {
+          "field": { "fieldPath": "stock" }
+        }
+      }
+    ]
+  }
+}

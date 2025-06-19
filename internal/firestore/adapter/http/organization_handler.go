@@ -208,34 +208,33 @@ func (h *OrganizationHandler) ListOrganizations(c *fiber.Ctx) error { // Parse p
 	} else {
 		organizations, err = h.organizationRepo.ListOrganizations(c.Context(), pageSize, offset)
 	}
-
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error":   "list_organizations_failed",
 			"message": "Failed to list organizations",
 		})
-	} // Convert to response format
+	}
+
+	// Convert to response format
 	var orgResponses []OrganizationResponse
-	if organizations != nil {
-		for _, org := range organizations {
-			// Add nil check for safety
-			if org == nil {
-				continue
-			}
-			orgResponses = append(orgResponses, OrganizationResponse{
-				Name:            "organizations/" + org.OrganizationID,
-				OrganizationID:  org.OrganizationID,
-				DisplayName:     org.DisplayName,
-				Description:     org.Description,
-				BillingEmail:    org.BillingEmail,
-				AdminEmails:     org.AdminEmails,
-				DefaultLocation: org.DefaultLocation,
-				State:           string(org.State),
-				CreatedAt:       org.CreatedAt.Format("2006-01-02T15:04:05Z"),
-				UpdatedAt:       org.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-				ProjectCount:    org.ProjectCount,
-			})
+	for _, org := range organizations {
+		// Add nil check for safety
+		if org == nil {
+			continue
 		}
+		orgResponses = append(orgResponses, OrganizationResponse{
+			Name:            "organizations/" + org.OrganizationID,
+			OrganizationID:  org.OrganizationID,
+			DisplayName:     org.DisplayName,
+			Description:     org.Description,
+			BillingEmail:    org.BillingEmail,
+			AdminEmails:     org.AdminEmails,
+			DefaultLocation: org.DefaultLocation,
+			State:           string(org.State),
+			CreatedAt:       org.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:       org.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			ProjectCount:    org.ProjectCount,
+		})
 	}
 
 	// Ensure orgResponses is never nil

@@ -40,6 +40,16 @@ func (m *MockQueryEngine) GetQueryCapabilities() repository.QueryCapabilities {
 	return args.Get(0).(repository.QueryCapabilities)
 }
 
+func (m *MockQueryEngine) ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error) {
+	args := m.Called(ctx, projectID, databaseID, collectionPath, pipeline)
+	return args.Get(0).([]map[string]interface{}), args.Error(1)
+}
+
+func (m *MockQueryEngine) BuildMongoFilter(filters []model.Filter) (interface{}, error) {
+	args := m.Called(filters)
+	return args.Get(0), args.Error(1)
+}
+
 func TestDocumentBasedSchemaInferenceService(t *testing.T) {
 	tests := []struct {
 		name          string

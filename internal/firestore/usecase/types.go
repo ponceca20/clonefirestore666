@@ -209,3 +209,55 @@ type AtomicServerTimestampRequest struct {
 	DocumentID   string `json:"documentId" validate:"required"`
 	Field        string `json:"field" validate:"required"`
 }
+
+// Aggregation operations
+type AggregationQueryRequest struct {
+	ProjectID                  string                      `json:"projectId" validate:"required"`
+	DatabaseID                 string                      `json:"databaseId" validate:"required"`
+	Parent                     string                      `json:"parent" validate:"required"`
+	StructuredAggregationQuery *StructuredAggregationQuery `json:"structuredAggregationQuery" validate:"required"`
+}
+
+type StructuredAggregationQuery struct {
+	StructuredQuery *model.Query          `json:"structuredQuery,omitempty"`
+	GroupBy         []GroupByField        `json:"groupBy,omitempty"`
+	Aggregations    []AggregationFunction `json:"aggregations" validate:"required,min=1,max=5"`
+}
+
+type GroupByField struct {
+	FieldPath string `json:"fieldPath" validate:"required"`
+}
+
+type AggregationFunction struct {
+	Alias string            `json:"alias" validate:"required"`
+	Count *CountAggregation `json:"count,omitempty"`
+	Sum   *FieldAggregation `json:"sum,omitempty"`
+	Avg   *FieldAggregation `json:"avg,omitempty"`
+	Min   *FieldAggregation `json:"min,omitempty"` // [EXTENSIÓN]
+	Max   *FieldAggregation `json:"max,omitempty"` // [EXTENSIÓN]
+}
+
+type CountAggregation struct {
+	// Empty struct for count aggregation
+}
+
+type FieldAggregation struct {
+	Field FieldReference `json:"field" validate:"required"`
+}
+
+type FieldReference struct {
+	FieldPath string `json:"fieldPath" validate:"required"`
+}
+
+type AggregationQueryResponse struct {
+	Results []AggregationResult `json:"results"`
+}
+
+type AggregationResult struct {
+	Result   AggregationResultData `json:"result"`
+	ReadTime string                `json:"readTime"`
+}
+
+type AggregationResultData struct {
+	AggregateFields map[string]interface{} `json:"aggregateFields"`
+}

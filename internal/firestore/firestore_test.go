@@ -3,13 +3,16 @@ package firestore
 import (
 	"context"
 	"testing"
+	"time"
 
 	"firestore-clone/internal/auth/domain/model" // For auth models
 	"firestore-clone/internal/firestore/config"
 	firestoreModel "firestore-clone/internal/firestore/domain/model" // Alias to avoid conflict
+	"firestore-clone/internal/firestore/usecase"
 	"firestore-clone/internal/shared/contextkeys"
 	"firestore-clone/internal/shared/logger"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -49,15 +52,16 @@ func TestFirestoreModule_Initialization(t *testing.T) {
 
 	// Create mock auth client (dependency injection)
 	authClient := &MockAuthClient{}
-
 	// Create logger
 	log := logger.NewLogger()
 
+	// Create test Redis client for distributed event storage
+	redisClient := createTestRedisClientMock()
+
 	// Create FirestoreModule with dependency injection
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, redisClient)
 	require.NoError(t, err)
 	require.NotNil(t, module)
-
 	// Verify all components are initialized properly
 	assert.NotNil(t, module.Config)
 	assert.NotNil(t, module.AuthClient)
@@ -71,6 +75,10 @@ func TestFirestoreModule_Initialization(t *testing.T) {
 	assert.NotNil(t, module.TenantManager)
 	assert.NotNil(t, module.OrganizationRepo)
 	assert.NotNil(t, module.OrganizationHandler)
+
+	// Verify Redis components are initialized
+	assert.NotNil(t, module.RedisClient)
+	assert.NotNil(t, module.RedisEventStore)
 
 	// Test module stop
 	err = module.Stop()
@@ -89,9 +97,11 @@ func TestFirestoreModule_InitializationWithConfig(t *testing.T) {
 
 	// Create mock auth client
 	authClient := &MockAuthClient{}
-
 	// Create logger
 	log := logger.NewLogger()
+
+	// Create test Redis client for distributed event storage
+	redisClient := createTestRedisClientMock()
 
 	// Create custom config (clean architecture: configuration as data)
 	cfg := &config.FirestoreConfig{
@@ -104,7 +114,7 @@ func TestFirestoreModule_InitializationWithConfig(t *testing.T) {
 	}
 
 	// Create FirestoreModule with custom config
-	module, err := NewFirestoreModuleWithConfig(authClient, log, mongoClient, masterDB, cfg)
+	module, err := NewFirestoreModuleWithConfig(authClient, log, mongoClient, masterDB, cfg, redisClient)
 	require.NoError(t, err)
 	require.NotNil(t, module)
 
@@ -126,15 +136,17 @@ func TestFirestoreModule_QueryEngine_NestedFieldSupport(t *testing.T) {
 
 	// Create test database
 	masterDB := mongoClient.Database("firestore_test_master")
-
 	// Create mock auth client
 	authClient := &MockAuthClient{}
 
 	// Create logger
 	log := logger.NewLogger()
 
+	// Create test Redis client for distributed event storage
+	redisClient := createTestRedisClientMock()
+
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, redisClient)
 	require.NoError(t, err)
 	require.NotNil(t, module)
 
@@ -195,7 +207,7 @@ func TestFirestoreModule_QueryEngine_ExecuteQuery_WithContext(t *testing.T) {
 	log := logger.NewLogger()
 
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, createTestRedisClientMock())
 	require.NoError(t, err)
 	require.NotNil(t, module)
 
@@ -251,7 +263,7 @@ func TestFirestoreModule_QueryEngine_NestedFieldQuery(t *testing.T) {
 	log := logger.NewLogger()
 
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, createTestRedisClientMock())
 	require.NoError(t, err)
 	require.NotNil(t, module)
 
@@ -316,7 +328,7 @@ func TestFirestoreModule_ArchitecturalCompliance(t *testing.T) {
 	log := logger.NewLogger()
 
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, createTestRedisClientMock())
 	require.NoError(t, err)
 	require.NotNil(t, module)
 
@@ -343,6 +355,88 @@ func TestFirestoreModule_ArchitecturalCompliance(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// TestFirestoreModule_RedisIntegration tests Redis Streams integration for realtime events
+// This verifies that the distributed event storage is working correctly
+func TestFirestoreModule_RedisIntegration(t *testing.T) {
+	// Create test MongoDB client
+	mongoClient, err := mongo.Connect(context.Background(), options.Client().ApplyURI("mongodb://localhost:27017"))
+	require.NoError(t, err)
+	defer mongoClient.Disconnect(context.Background())
+
+	// Create test database
+	masterDB := mongoClient.Database("firestore_test_master")
+
+	// Create mock auth client
+	authClient := &MockAuthClient{}
+
+	// Create logger
+	log := logger.NewLogger()
+
+	// Create test Redis client for distributed event storage
+	redisClient := createTestRedisClientMock()
+
+	// Create FirestoreModule with Redis integration
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, redisClient)
+	require.NoError(t, err)
+	require.NotNil(t, module)
+
+	// Verify Redis components are properly initialized
+	assert.NotNil(t, module.RedisClient, "RedisClient should be initialized")
+	assert.NotNil(t, module.RedisEventStore, "RedisEventStore should be initialized")
+	assert.NotNil(t, module.RealtimeUsecase, "RealtimeUsecase should be initialized with Redis backing")
+
+	// Test that realtime usecase can handle events (basic functionality)
+	ctx := context.Background()
+
+	// Create a test subscription channel
+	eventChannel := make(chan firestoreModel.RealtimeEvent, 10)
+
+	// Test subscription creation (this should work even without actual Redis connection)
+	subscribeReq := usecase.SubscribeRequest{
+		SubscriberID:   "test-subscriber",
+		SubscriptionID: firestoreModel.SubscriptionID("test-subscription"),
+		FirestorePath:  "projects/test-project/databases/test-db/documents/users/user1",
+		EventChannel:   eventChannel,
+		Options: usecase.SubscriptionOptions{
+			IncludeMetadata: true,
+		},
+	}
+
+	response, err := module.RealtimeUsecase.Subscribe(ctx, subscribeReq)
+	assert.NoError(t, err, "Subscribe should work with Redis backend")
+	assert.NotNil(t, response, "Subscribe response should not be nil")
+	assert.Equal(t, subscribeReq.SubscriptionID, response.SubscriptionID)
+
+	// Test unsubscription
+	unsubscribeReq := usecase.UnsubscribeRequest{
+		SubscriberID:   "test-subscriber",
+		SubscriptionID: firestoreModel.SubscriptionID("test-subscription"),
+	}
+
+	err = module.RealtimeUsecase.Unsubscribe(ctx, unsubscribeReq)
+	assert.NoError(t, err, "Unsubscribe should work with Redis backend")
+
+	// Test module stop
+	err = module.Stop()
+	assert.NoError(t, err)
+}
+
+// createTestRedisClient creates a Redis client for testing
+// Uses miniredis for in-memory Redis simulation in tests
+
+// createTestRedisClientMock creates a mock Redis client for unit tests
+// This avoids requiring an actual Redis instance for unit tests
+func createTestRedisClientMock() *redis.Client {
+	// For unit tests where Redis isn't available, create a client that won't be used
+	// The actual EventStore can be mocked separately in the usecase tests
+	return redis.NewClient(&redis.Options{
+		Addr:         "localhost:16379", // Non-standard port to avoid conflicts
+		DialTimeout:  1 * time.Second,   // Short timeout for mock
+		ReadTimeout:  1 * time.Second,   // Short timeout for mock
+		WriteTimeout: 1 * time.Second,   // Short timeout for mock
+	})
+}
+
 // Benchmark tests for performance verification (clean code: performance testing)
 func BenchmarkFirestoreModule_QueryEngine_SimpleQuery(b *testing.B) {
 	// Create test MongoDB client
@@ -360,7 +454,7 @@ func BenchmarkFirestoreModule_QueryEngine_SimpleQuery(b *testing.B) {
 	log := logger.NewLogger()
 
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, createTestRedisClientMock())
 	require.NoError(b, err)
 
 	// Create context with organization ID
@@ -404,7 +498,7 @@ func BenchmarkFirestoreModule_QueryEngine_NestedFieldQuery(b *testing.B) {
 	log := logger.NewLogger()
 
 	// Create FirestoreModule
-	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB)
+	module, err := NewFirestoreModule(authClient, log, mongoClient, masterDB, createTestRedisClientMock())
 	require.NoError(b, err)
 
 	// Create context with organization ID

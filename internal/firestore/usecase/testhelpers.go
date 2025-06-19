@@ -275,37 +275,57 @@ func (m *MockLogger) WithComponent(component string) logger.Logger           { r
 
 // MockRealtimeUsecase implements RealtimeUsecase for testing with full synchronization
 type MockRealtimeUsecase struct {
-	subscriptions map[string]map[string]chan<- model.RealtimeEvent // subscriberID -> path -> channel
+	subscriptions map[string]map[model.SubscriptionID]*Subscription // subscriberID -> subscriptionID -> subscription
 	mu            sync.RWMutex
 	events        []model.RealtimeEvent // Store events for verification
 }
 
 func NewMockRealtimeUsecase() *MockRealtimeUsecase {
 	return &MockRealtimeUsecase{
-		subscriptions: make(map[string]map[string]chan<- model.RealtimeEvent),
+		subscriptions: make(map[string]map[model.SubscriptionID]*Subscription),
 		events:        make([]model.RealtimeEvent, 0),
 	}
 }
 
-func (m *MockRealtimeUsecase) Subscribe(ctx context.Context, subscriberID, path string, eventChan chan<- model.RealtimeEvent) error {
+func (m *MockRealtimeUsecase) Subscribe(ctx context.Context, req SubscribeRequest) (*SubscribeResponse, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.subscriptions[subscriberID] == nil {
-		m.subscriptions[subscriberID] = make(map[string]chan<- model.RealtimeEvent)
+	if m.subscriptions[req.SubscriberID] == nil {
+		m.subscriptions[req.SubscriberID] = make(map[model.SubscriptionID]*Subscription)
 	}
-	m.subscriptions[subscriberID][path] = eventChan
-	return nil
+
+	subscription := &Subscription{
+		SubscriberID:   req.SubscriberID,
+		SubscriptionID: req.SubscriptionID,
+		FirestorePath:  req.FirestorePath,
+		EventChannel:   req.EventChannel,
+		CreatedAt:      time.Now(),
+		LastHeartbeat:  time.Now(),
+		ResumeToken:    req.ResumeToken,
+		Query:          req.Query,
+		IsActive:       true,
+		Options:        req.Options,
+	}
+
+	m.subscriptions[req.SubscriberID][req.SubscriptionID] = subscription
+
+	return &SubscribeResponse{
+		SubscriptionID:  req.SubscriptionID,
+		InitialSnapshot: true,
+		ResumeToken:     req.ResumeToken,
+		CreatedAt:       subscription.CreatedAt,
+	}, nil
 }
 
-func (m *MockRealtimeUsecase) Unsubscribe(ctx context.Context, subscriberID, path string) error {
+func (m *MockRealtimeUsecase) Unsubscribe(ctx context.Context, req UnsubscribeRequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.subscriptions[subscriberID] != nil {
-		delete(m.subscriptions[subscriberID], path)
-		if len(m.subscriptions[subscriberID]) == 0 {
-			delete(m.subscriptions, subscriberID)
+	if m.subscriptions[req.SubscriberID] != nil {
+		delete(m.subscriptions[req.SubscriberID], req.SubscriptionID)
+		if len(m.subscriptions[req.SubscriberID]) == 0 {
+			delete(m.subscriptions, req.SubscriberID)
 		}
 	}
 	return nil
@@ -319,18 +339,18 @@ func (m *MockRealtimeUsecase) UnsubscribeAll(ctx context.Context, subscriberID s
 	return nil
 }
 
-func (m *MockRealtimeUsecase) EmitEvent(event model.RealtimeEvent) {
+func (m *MockRealtimeUsecase) PublishEvent(ctx context.Context, event model.RealtimeEvent) error {
 	m.mu.Lock()
 	m.events = append(m.events, event)
 	m.mu.Unlock()
 
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	for _, paths := range m.subscriptions {
-		for path, eventChan := range paths {
-			if path == event.FullPath || strings.HasPrefix(event.FullPath, path) {
+	for _, subscriptions := range m.subscriptions {
+		for _, subscription := range subscriptions {
+			if subscription.FirestorePath == event.FullPath || strings.HasPrefix(event.FullPath, subscription.FirestorePath) {
 				select {
-				case eventChan <- event:
+				case subscription.EventChannel <- event:
 					// Event sent successfully
 				default:
 					// Channel is full, skip
@@ -338,6 +358,30 @@ func (m *MockRealtimeUsecase) EmitEvent(event model.RealtimeEvent) {
 			}
 		}
 	}
+	return nil
+}
+
+func (m *MockRealtimeUsecase) GetEventsSince(ctx context.Context, firestorePath string, resumeToken model.ResumeToken) ([]model.RealtimeEvent, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Simple implementation for testing - return all events
+	return m.events, nil
+}
+
+func (m *MockRealtimeUsecase) SendHeartbeat(ctx context.Context) error {
+	// Mock implementation - no-op
+	return nil
+}
+
+func (m *MockRealtimeUsecase) UpdateLastHeartbeat(subscriberID string, subscriptionID model.SubscriptionID) error {
+	// Mock implementation - no-op
+	return nil
+}
+
+func (m *MockRealtimeUsecase) CleanupStaleConnections(ctx context.Context, timeout time.Duration) error {
+	// Mock implementation - no-op
+	return nil
 }
 
 func (m *MockRealtimeUsecase) GetSubscriberCount(firestorePath string) int {
@@ -345,23 +389,75 @@ func (m *MockRealtimeUsecase) GetSubscriberCount(firestorePath string) int {
 	defer m.mu.RUnlock()
 
 	count := 0
-	for _, paths := range m.subscriptions {
-		if _, exists := paths[firestorePath]; exists {
-			count++
+	for _, subscriptions := range m.subscriptions {
+		for _, subscription := range subscriptions {
+			if subscription.FirestorePath == firestorePath {
+				count++
+			}
 		}
 	}
 	return count
+}
+
+func (m *MockRealtimeUsecase) GetActiveSubscriptions(subscriberID string) map[model.SubscriptionID]*Subscription {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[model.SubscriptionID]*Subscription)
+	if subscriptions, exists := m.subscriptions[subscriberID]; exists {
+		for subscriptionID, subscription := range subscriptions {
+			result[subscriptionID] = subscription
+		}
+	}
+	return result
+}
+
+func (m *MockRealtimeUsecase) ValidatePermissions(ctx context.Context, subscriberID string, permissionValidator PermissionValidator) error {
+	// Mock implementation - always pass
+	return nil
+}
+
+func (m *MockRealtimeUsecase) GetHealthStatus() HealthStatus {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	totalSubscriptions := 0
+	for _, subscriptions := range m.subscriptions {
+		totalSubscriptions += len(subscriptions)
+	}
+
+	return HealthStatus{
+		IsHealthy:           true,
+		ActiveSubscriptions: totalSubscriptions,
+		ActiveConnections:   len(m.subscriptions),
+		LastHealthCheck:     time.Now(),
+		EventStoreSize:      len(m.events),
+	}
+}
+
+func (m *MockRealtimeUsecase) GetMetrics() RealtimeMetrics {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	totalSubscriptions := 0
+	for _, subscriptions := range m.subscriptions {
+		totalSubscriptions += len(subscriptions)
+	}
+
+	return RealtimeMetrics{
+		TotalSubscriptions: int64(totalSubscriptions),
+		TotalEvents:        int64(len(m.events)),
+		ActiveSubscribers:  len(m.subscriptions),
+		EventsPerSecond:    0.0, // Mock value
+		AverageLatency:     time.Millisecond,
+		LastMetricsUpdate:  time.Now(),
+	}
 }
 
 func (m *MockRealtimeUsecase) GetEventCount() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.events)
-}
-
-func (m *MockRealtimeUsecase) PublishEvent(ctx context.Context, event model.RealtimeEvent) error {
-	m.EmitEvent(event)
-	return nil
 }
 
 // MockSecurityUsecase implements SecurityUsecase for testing with configurable responses
@@ -497,6 +593,24 @@ func (m *MockQueryEngine) GetQueryCapabilities() repository.QueryCapabilities {
 		MaxOrderByCount:          3,
 		MaxNestingDepth:          10,
 	}
+}
+
+func (m *MockQueryEngine) ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error) {
+	// Return mock aggregation results
+	return []map[string]interface{}{
+		{
+			"count": 42,
+			"sum":   1234.56,
+			"avg":   78.9,
+		},
+	}, nil
+}
+
+func (m *MockQueryEngine) BuildMongoFilter(filters []model.Filter) (interface{}, error) {
+	// Return a simple mock MongoDB filter
+	return map[string]interface{}{
+		"mockFilter": true,
+	}, nil
 }
 
 // MockProjectionService implements ProjectionService for testing

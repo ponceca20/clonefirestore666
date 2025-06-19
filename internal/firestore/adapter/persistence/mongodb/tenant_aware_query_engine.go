@@ -186,5 +186,54 @@ func (qe *TenantAwareQueryEngine) GetQueryCapabilities() repository.QueryCapabil
 	}
 }
 
+// BuildMongoFilter builds a MongoDB filter from Firestore filters (implementa repository.QueryEngine)
+func (qe *TenantAwareQueryEngine) BuildMongoFilter(filters []model.Filter) (interface{}, error) {
+	// Use a temporary enhanced engine for building filters (no tenant context needed for filter building)
+	tempDB := qe.mongoClient.Database("temp_filter")
+	enhancedEngine := NewEnhancedMongoQueryEngine(tempDB)
+
+	return enhancedEngine.BuildMongoFilter(filters)
+}
+
+// ExecuteAggregationPipeline executes a MongoDB aggregation pipeline with tenant awareness
+func (qe *TenantAwareQueryEngine) ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error) {
+	log.Printf("[TenantAwareQueryEngine] === INICIANDO EJECUCIÓN DE PIPELINE DE AGREGACIÓN ===")
+	log.Printf("[TenantAwareQueryEngine] CollectionPath: %s", collectionPath)
+	log.Printf("[TenantAwareQueryEngine] Pipeline: %+v", pipeline)
+
+	// Extraer organizationID del contexto
+	organizationID, err := qe.extractOrganizationID(ctx)
+	if err != nil {
+		log.Printf("[TenantAwareQueryEngine] ERROR: No se pudo extraer organization ID: %v", err)
+		return nil, fmt.Errorf("failed to extract organization ID: %w", err)
+	}
+
+	log.Printf("[TenantAwareQueryEngine] Organization ID extraído: %s", organizationID)
+	// Obtener la base de datos del tenant
+	tenantDB, err := qe.tenantManager.GetDatabaseForOrganization(ctx, organizationID)
+	if err != nil {
+		log.Printf("[TenantAwareQueryEngine] ERROR: No se pudo obtener la base de datos del tenant: %v", err)
+		return nil, fmt.Errorf("failed to get tenant database: %w", err)
+	}
+
+	log.Printf("[TenantAwareQueryEngine] Base de datos del tenant obtenida correctamente")
+	log.Printf("[TenantAwareQueryEngine] Ejecutando agregación para tenant %s en colección %s", organizationID, collectionPath)
+
+	// Create enhanced MongoDB query engine for this tenant
+	enhancedEngine := NewEnhancedMongoQueryEngine(tenantDB)
+
+	// Execute aggregation pipeline
+	results, err := enhancedEngine.ExecuteAggregationPipeline(ctx, projectID, databaseID, collectionPath, pipeline)
+	if err != nil {
+		log.Printf("[TenantAwareQueryEngine] ERROR: Fallo al ejecutar pipeline de agregación: %v", err)
+		return nil, err
+	}
+
+	log.Printf("[TenantAwareQueryEngine] === AGREGACIÓN COMPLETADA EXITOSAMENTE ===")
+	log.Printf("[TenantAwareQueryEngine] Resultados retornados: %d", len(results))
+
+	return results, nil
+}
+
 // Asegurar que implementa la interfaz
 var _ repository.QueryEngine = (*TenantAwareQueryEngine)(nil)

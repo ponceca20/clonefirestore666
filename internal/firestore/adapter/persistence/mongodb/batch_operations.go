@@ -26,8 +26,7 @@ func (b *BatchOperations) RunBatchWrite(ctx context.Context, projectID, database
 		return []*model.WriteResult{}, nil
 	}
 
-	var writeResults []*model.WriteResult
-	writeResults = make([]*model.WriteResult, len(writes))
+	writeResults := make([]*model.WriteResult, len(writes))
 
 	for i, write := range writes {
 		result, err := b.executeBatchOperation(ctx, projectID, databaseID, write)
@@ -181,8 +180,9 @@ func (b *BatchOperations) checkPrecondition(ctx context.Context, filter map[stri
 	if !ok {
 		return false
 	}
-	var doc model.Document
+
 	targetCollection := b.repo.db.Collection(collectionID)
+	var doc model.Document
 	err := targetCollection.FindOne(ctx, filter).Decode(&doc)
 	if precondition.Exists != nil {
 		if *precondition.Exists && err != nil {
@@ -238,6 +238,8 @@ func (b *BatchOperations) emitDocumentEvent(ctx context.Context, projectID, data
 // Utility functions
 
 // inferFieldValueType infers the Firestore field value type from a Go value
+//
+//nolint:unusedfunc // utility function kept for potential future use
 func inferFieldValueType(value interface{}) model.FieldValueType {
 	switch value.(type) {
 	case string:

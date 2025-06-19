@@ -38,7 +38,7 @@ func TestCreateDatabaseHandler_Success(t *testing.T) {
 			return &model.Database{DatabaseID: "d1"}, nil
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID", h.CreateDatabase)
 
 	body := []byte(`{"database":{"name":"d1"}}`)
@@ -56,7 +56,7 @@ func TestCreateDatabaseHandler_Success(t *testing.T) {
 func TestCreateDatabaseHandler_MissingDatabase(t *testing.T) {
 	app := fiber.New()
 	mockUC := &customDatabaseUC{}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID", h.CreateDatabase)
 
 	body := []byte(`{}`)
@@ -77,7 +77,7 @@ func TestCreateDatabaseHandler_UsecaseError(t *testing.T) {
 			return nil, errors.New("internal error")
 		},
 	}
-	h := &HTTPHandler{FirestoreUC: mockUC, Log: testLogger{}}
+	h := &HTTPHandler{FirestoreUC: mockUC, Log: TestLogger{}}
 	app.Post("/test/:projectID", h.CreateDatabase)
 
 	body := []byte(`{"database":{"name":"d1"}}`)

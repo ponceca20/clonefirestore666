@@ -7,8 +7,6 @@ import (
 	"testing"
 
 	"firestore-clone/internal/firestore/domain/model"
-
-	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // testContext proporciona un contexto compartido para las pruebas
@@ -67,47 +65,7 @@ func newComplexTestData() map[string]*model.FieldValue {
 					},
 				},
 			},
-		},
-	}
-}
-
-// mockCollectionWithOptions implementa CollectionInterface con firmas correctas para options
-type mockCollectionWithOptions struct{}
-
-func (m *mockCollectionWithOptions) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
-	return 0, nil
-}
-
-func (m *mockCollectionWithOptions) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
-	return nil, nil
-}
-
-func (m *mockCollectionWithOptions) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
-	return &mockSingleResult{}
-}
-
-func (m *mockCollectionWithOptions) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
-	return &mockUpdateResult{MatchedCount: 1}, nil
-}
-
-func (m *mockCollectionWithOptions) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
-	return &mockUpdateResult{MatchedCount: 1}, nil
-}
-
-func (m *mockCollectionWithOptions) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
-	return &mockDeleteResult{DeletedCount: 1}, nil
-}
-
-func (m *mockCollectionWithOptions) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
-	return &mockCursor{}, nil
-}
-
-func (m *mockCollectionWithOptions) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
-	return &mockCursor{}, nil
-}
-
-func (m *mockCollectionWithOptions) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
-	return &mockSingleResult{}
+		}}
 }
 
 // TestFlattenFields verifica la función de aplanamiento de campos

@@ -36,6 +36,12 @@ type QueryEngine interface {
 	// CountDocuments returns the count of documents matching the query
 	CountDocuments(ctx context.Context, collectionPath string, query model.Query) (int64, error)
 
+	// ExecuteAggregationPipeline executes a MongoDB aggregation pipeline
+	ExecuteAggregationPipeline(ctx context.Context, projectID, databaseID, collectionPath string, pipeline []interface{}) ([]map[string]interface{}, error)
+
+	// BuildMongoFilter builds a MongoDB filter from Firestore filters
+	BuildMongoFilter(filters []model.Filter) (interface{}, error)
+
 	// ValidateQuery validates if a query is supported by the engine
 	ValidateQuery(query model.Query) error
 
