@@ -10,12 +10,12 @@ import (
 )
 
 type mockDatabaseProvider struct {
-	store *mockDocumentStore
+	store *MockDocumentStore
 }
 
 // Ahora retorna la interfaz CollectionInterface
 func (m *mockDatabaseProvider) Collection(name string) CollectionInterface {
-	return &mockCollectionWithStore{store: m.store}
+	return &MockCollectionWithStore{store: m.store}
 }
 
 func (m *mockDatabaseProvider) Client() interface{} {
@@ -23,8 +23,8 @@ func (m *mockDatabaseProvider) Client() interface{} {
 }
 
 // Ajusta el constructor para aceptar la interfaz
-func setupAtomicOpsTest() (*AtomicOperations, *mockDocumentStore) {
-	store := newMockDocumentStore()
+func setupAtomicOpsTest() (*AtomicOperations, *MockDocumentStore) {
+	store := NewMockDocumentStore()
 	dbProvider := &mockDatabaseProvider{store: store}
 	atomicOps := NewAtomicOperations(dbProvider)
 	return atomicOps, store

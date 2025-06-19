@@ -18,7 +18,7 @@ func TestBuildMongoFilter_SimpleFilter(t *testing.T) {
 		},
 	}
 
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{"name": "test"}
 	assert.Equal(t, expected, filter)
 }
@@ -36,7 +36,7 @@ func TestBuildMongoFilter_MultipleSimpleFilters(t *testing.T) {
 			Value:    100.0,
 		},
 	}
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{
 		"$and": []bson.M{
 			{"name": "test"},
@@ -65,7 +65,7 @@ func TestBuildMongoFilter_CompositeAND(t *testing.T) {
 		},
 	}
 
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{
 		"$and": []bson.M{
 			{"price": bson.M{"$gte": 50.0}},
@@ -93,7 +93,7 @@ func TestBuildMongoFilter_CompositeOR(t *testing.T) {
 			},
 		},
 	}
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{
 		"$or": []bson.M{
 			{"category": "Electronics"},
@@ -132,7 +132,7 @@ func TestBuildMongoFilter_NestedComposite(t *testing.T) {
 			},
 		},
 	}
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{
 		"$and": []bson.M{
 			{"available": true},
@@ -171,7 +171,7 @@ func TestBuildMongoFilter_MixedCompositeAndSimple(t *testing.T) {
 			},
 		},
 	}
-	filter := buildSimpleMongoFilter(filters)
+	filter := BuildSimpleMongoFilter(filters)
 	expected := bson.M{
 		"$and": []bson.M{
 			{"available": true},
@@ -194,7 +194,7 @@ func TestBuildMongoFilter_WithCursor(t *testing.T) {
 			Value:    "test",
 		}}
 	// Test the filter building with cursor
-	baseFilter := buildSimpleMongoFilter(filters)
+	baseFilter := BuildSimpleMongoFilter(filters)
 	cursorFilter := bson.M{"name": bson.M{"$gt": "cursor_value"}}
 
 	// Test mergeFiltersWithAnd function
@@ -306,7 +306,7 @@ func TestBuildFieldFilter_AllOperators(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(string(tc.operator), func(t *testing.T) {
-			result := buildSimpleFieldFilter("field", tc.operator, tc.value)
+			result := BuildSimpleFieldFilter("field", tc.operator, tc.value)
 			assert.Equal(t, tc.expected, result)
 		})
 	}

@@ -25,6 +25,12 @@ func (m *mockSecurityRulesEngine) SaveRules(ctx context.Context, projectID, data
 func (m *mockSecurityRulesEngine) ValidateRules(rules []*SecurityRule) error {
 	return nil
 }
+func (m *mockSecurityRulesEngine) ClearCache(projectID, databaseID string) {
+	// Mock implementation - no-op
+}
+func (m *mockSecurityRulesEngine) SetResourceAccessor(accessor ResourceAccessor) {
+	// Mock implementation - no-op
+}
 
 func TestSecurityRulesEngine_Compile(t *testing.T) {
 	// Placeholder: Add real SecurityRulesEngine interface tests here

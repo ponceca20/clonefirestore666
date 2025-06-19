@@ -586,7 +586,7 @@ func TestEnhancedQueryEngineTypeInferenceComparison(t *testing.T) {
 			}
 
 			// Test main engine filter building
-			mainFilter := mainEngine.singleMongoFilter(filter)
+			mainFilter := mainEngine.SingleMongoFilter(filter)
 
 			// Test enhanced engine filter building (with mock context)
 			enhancedFilter, err := enhancedEngine.buildSingleFilterWithContext(context.TODO(), "", filter)

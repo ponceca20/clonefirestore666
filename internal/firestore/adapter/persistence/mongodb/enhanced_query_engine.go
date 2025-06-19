@@ -304,36 +304,6 @@ func (e *EnhancedMongoQueryEngine) buildSingleFilterWithContext(ctx context.Cont
 	return e.buildFilterBSON(mongoFieldPath, filter.Operator, primitiveValue), nil
 }
 
-// buildArrayFilter builds MongoDB filters for array operations
-func (e *EnhancedMongoQueryEngine) buildArrayFilter(filter model.Filter, fieldPath *model.FieldPath) (bson.M, error) {
-	// For array operations, use arrayValue path
-	resolver := e.fieldPathResolver.(*MongoFieldPathResolver)
-	arrayFieldPath, err := resolver.ResolveArrayFieldPath(fieldPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve array field path: %w", err)
-	}
-
-	switch filter.Operator {
-	case model.OperatorArrayContains:
-		// Check if the original value is an object before extracting primitive value
-		if objValue, ok := filter.Value.(map[string]interface{}); ok {
-			// Object in array - use $elemMatch with the original object
-			return bson.M{arrayFieldPath: bson.M{"$elemMatch": objValue}}, nil
-		}
-		// Primitive in array - extract primitive value and use direct match
-		primitiveValue := e.extractPrimitiveValue(filter.Value)
-		return bson.M{arrayFieldPath: primitiveValue}, nil
-
-	case model.OperatorArrayContainsAny:
-		// Array contains any - use $in with primitive value
-		primitiveValue := e.extractPrimitiveValue(filter.Value)
-		return bson.M{arrayFieldPath: bson.M{"$in": primitiveValue}}, nil
-
-	default:
-		return nil, fmt.Errorf("unsupported array operator: %s", filter.Operator)
-	}
-}
-
 // Helper methods
 
 func (e *EnhancedMongoQueryEngine) extractPrimitiveValue(val interface{}) interface{} {

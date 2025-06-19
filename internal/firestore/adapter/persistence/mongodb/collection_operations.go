@@ -53,23 +53,6 @@ func mongoToModelCollection(mongoCol *MongoCollection) *model.Collection {
 	}
 }
 
-// Helper: convert model.Collection to MongoCollection
-func modelToMongoCollection(col *model.Collection) *MongoCollection {
-	return &MongoCollection{
-		ID:            col.ID,
-		ProjectID:     col.ProjectID,
-		DatabaseID:    col.DatabaseID,
-		CollectionID:  col.CollectionID,
-		Path:          col.Path,
-		ParentPath:    col.ParentPath,
-		DocumentCount: col.DocumentCount,
-		StorageSize:   col.StorageSize,
-		CreatedAt:     col.CreatedAt,
-		UpdatedAt:     col.UpdatedAt,
-		IsActive:      col.IsActive,
-	}
-}
-
 func (ops *CollectionOperations) CreateCollection(ctx context.Context, projectID, databaseID string, collection *model.Collection) error {
 	now := time.Now()
 

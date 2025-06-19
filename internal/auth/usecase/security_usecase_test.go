@@ -38,6 +38,12 @@ func (m *MockSecurityRulesEngine) SaveRules(ctx context.Context, projectID, data
 func (m *MockSecurityRulesEngine) ValidateRules(rules []*repository.SecurityRule) error {
 	return nil
 }
+func (m *MockSecurityRulesEngine) ClearCache(projectID, databaseID string) {
+	// Mock implementation - no-op
+}
+func (m *MockSecurityRulesEngine) SetResourceAccessor(accessor repository.ResourceAccessor) {
+	// Mock implementation - no-op
+}
 
 // DummyLogger implements logger.Logger with no-ops for all methods
 // Only the methods required by the interface are implemented for the test

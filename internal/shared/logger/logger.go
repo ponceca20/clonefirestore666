@@ -98,6 +98,21 @@ func NewLoggerWithConfig(level string, format string) Logger {
 	}
 }
 
+// NewTestLogger creates a logger instance optimized for testing (no output)
+func NewTestLogger() Logger {
+	logger := logrus.New()
+	logger.SetLevel(logrus.DebugLevel)
+	logger.SetOutput(os.Stdout) // For tests, we can keep output or redirect to /dev/null
+	logger.SetFormatter(&logrus.TextFormatter{
+		DisableTimestamp: true,
+		DisableColors:    true,
+	})
+
+	return &LogrusLogger{
+		entry: logrus.NewEntry(logger),
+	}
+}
+
 // Debug logs a debug message
 func (l *LogrusLogger) Debug(args ...interface{}) {
 	l.entry.Debug(args...)

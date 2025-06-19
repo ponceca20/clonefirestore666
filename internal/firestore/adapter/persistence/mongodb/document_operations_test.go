@@ -215,7 +215,7 @@ func TestExpandFields(t *testing.T) {
 
 // TestDocumentOperations_CRUD verifica las operaciones CRUD básicas
 func TestDocumentOperations_CRUD(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
+	repo := NewTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	data := newTestData()
 
@@ -296,7 +296,7 @@ func validateFields(t *testing.T, got, want map[string]*model.FieldValue) {
 
 // TestDocumentOperations_ListDocuments verifica el listado de documentos
 func TestDocumentOperations_ListDocuments(t *testing.T) {
-	repo, cleanup := newTestDocumentRepositoryForOpsWithCleanup()
+	repo, cleanup := NewTestDocumentRepositoryForOpsWithCleanup()
 	defer cleanup() // Clean up at the end
 
 	docs := NewDocumentOperations(repo)
@@ -356,7 +356,7 @@ func TestDocumentOperations_ListDocuments(t *testing.T) {
 
 // TestDocumentOperations_Errors verifica el manejo de errores
 func TestDocumentOperations_Errors(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps()
+	repo := NewTestDocumentRepositoryForOps()
 	docs := NewDocumentOperations(repo)
 	data := newTestData()
 

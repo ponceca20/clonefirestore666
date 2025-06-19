@@ -116,7 +116,7 @@ func TestFullQueryPipeline(t *testing.T) {
 				t.Logf("Testing: %s", tc.description)
 
 				// Test the filter conversion using our fixed FieldPathResolver implementation
-				mongoFilter := queryEngine.singleMongoFilter(tc.filter)
+				mongoFilter := queryEngine.SingleMongoFilter(tc.filter)
 
 				t.Logf("Filter: %+v", tc.filter)
 				t.Logf("Expected BSON: %+v", tc.expectedBSON)

@@ -237,30 +237,6 @@ func (b *BatchOperations) emitDocumentEvent(ctx context.Context, projectID, data
 
 // Utility functions
 
-// inferFieldValueType infers the Firestore field value type from a Go value
-//
-//nolint:unusedfunc // utility function kept for potential future use
-func inferFieldValueType(value interface{}) model.FieldValueType {
-	switch value.(type) {
-	case string:
-		return model.FieldTypeString
-	case int, int32, int64:
-		return model.FieldTypeInt
-	case float32, float64:
-		return model.FieldTypeDouble
-	case bool:
-		return model.FieldTypeBool
-	case time.Time:
-		return model.FieldTypeTimestamp
-	case []interface{}:
-		return model.FieldTypeArray
-	case map[string]interface{}:
-		return model.FieldTypeMap
-	default:
-		return model.FieldTypeString // default fallback
-	}
-}
-
 // convertToFieldValues converts raw data to Firestore FieldValue format with smart timestamp detection
 func convertToFieldValues(data map[string]interface{}) map[string]*model.FieldValue {
 	fields := make(map[string]*model.FieldValue)

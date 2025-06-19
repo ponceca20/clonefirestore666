@@ -73,27 +73,6 @@ func splitAndTrim(s, sep string) []string {
 	return out
 }
 
-// Helper: convert MongoDocument to model.Document
-// mongoToModelDocument convierte un MongoDocument a model.Document (para compatibilidad)
-func mongoToModelDocument(mongoDoc *MongoDocument) *model.Document {
-	return &model.Document{
-		ID:                mongoDoc.ID,
-		ProjectID:         mongoDoc.ProjectID,
-		DatabaseID:        mongoDoc.DatabaseID,
-		CollectionID:      mongoDoc.CollectionID,
-		DocumentID:        mongoDoc.DocumentID,
-		Path:              mongoDoc.Path,
-		ParentPath:        mongoDoc.ParentPath,
-		Fields:            mongoDoc.Fields,
-		CreateTime:        mongoDoc.CreateTime,
-		UpdateTime:        mongoDoc.UpdateTime,
-		ReadTime:          mongoDoc.ReadTime,
-		Version:           mongoDoc.Version,
-		Exists:            mongoDoc.Exists,
-		HasSubcollections: mongoDoc.HasSubcollections,
-	}
-}
-
 // flattenFieldsForMongoDB convierte los FieldValue a una estructura plana para MongoDB
 func flattenFieldsForMongoDB(fields map[string]*model.FieldValue) map[string]interface{} {
 	result := make(map[string]interface{})

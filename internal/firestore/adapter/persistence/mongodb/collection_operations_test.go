@@ -13,8 +13,8 @@ import (
 // Crea un DocumentRepository con mocks para los tests
 func newTestDocumentRepositoryForCollections() *DocumentRepository {
 	return &DocumentRepository{
-		collectionsCol: &mockCollection{},
-		documentsCol:   &mockCollection{},
+		collectionsCol: &MockCollection{},
+		documentsCol:   &MockCollection{},
 		logger:         &usecase.MockLogger{}, // Use the existing MockLogger from usecase package
 	}
 }

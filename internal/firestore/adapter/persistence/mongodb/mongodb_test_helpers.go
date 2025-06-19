@@ -19,14 +19,14 @@ import (
 // --- Shared test mocks for mongodb package ---
 // These mocks implement the correct CollectionInterface signatures for Firestore clone tests.
 
-// mockDocumentStore simulates an in-memory MongoDB document store for testing
-type mockDocumentStore struct {
+// MockDocumentStore simulates an in-memory MongoDB document store for testing
+type MockDocumentStore struct {
 	documents map[string]*MongoDocumentFlat
 	mutex     sync.RWMutex
 }
 
 // Clear removes all documents from the store
-func (store *mockDocumentStore) Clear() {
+func (store *MockDocumentStore) Clear() {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	store.documents = make(map[string]*MongoDocumentFlat)
@@ -123,34 +123,36 @@ type mockDeleteResult struct {
 
 func (m *mockDeleteResult) Deleted() int64 { return m.DeletedCount }
 
-func newMockDocumentStore() *mockDocumentStore {
-	return &mockDocumentStore{
+// NewMockDocumentStore creates a new MockDocumentStore for testing
+func NewMockDocumentStore() *MockDocumentStore {
+	return &MockDocumentStore{
 		documents: make(map[string]*MongoDocumentFlat),
 	}
 }
 
-func (m *mockDocumentStore) generateKey(projectID, databaseID, collectionID, documentID string) string {
+func (m *MockDocumentStore) generateKey(projectID, databaseID, collectionID, documentID string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", projectID, databaseID, collectionID, documentID)
 }
 
-// mockCollectionWithStore implements CollectionInterface with state management
-type mockCollectionWithStore struct {
-	store *mockDocumentStore
+// MockCollectionWithStore implements CollectionInterface with state management
+type MockCollectionWithStore struct {
+	store *MockDocumentStore
 }
 
-func newMockCollectionWithStore() *mockCollectionWithStore {
-	return &mockCollectionWithStore{
-		store: newMockDocumentStore(),
+// NewMockCollectionWithStore creates a new MockCollectionWithStore for testing
+func NewMockCollectionWithStore() *MockCollectionWithStore {
+	return &MockCollectionWithStore{
+		store: NewMockDocumentStore(),
 	}
 }
 
-func (m *mockCollectionWithStore) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+func (m *MockCollectionWithStore) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
 	m.store.mutex.RLock()
 	defer m.store.mutex.RUnlock()
 	return int64(len(m.store.documents)), nil
 }
 
-func (m *mockCollectionWithStore) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
+func (m *MockCollectionWithStore) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
 	m.store.mutex.Lock()
 	defer m.store.mutex.Unlock()
 
@@ -168,7 +170,7 @@ func (m *mockCollectionWithStore) InsertOne(ctx context.Context, doc interface{}
 	return nil, fmt.Errorf("unsupported document type: %T", doc)
 }
 
-func (m *mockCollectionWithStore) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
+func (m *MockCollectionWithStore) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
 	m.store.mutex.RLock()
 	defer m.store.mutex.RUnlock()
 
@@ -196,7 +198,7 @@ func (m *mockCollectionWithStore) FindOne(ctx context.Context, filter interface{
 	return &mockSingleResultWithData{err: ErrDocumentNotFound}
 }
 
-func (m *mockCollectionWithStore) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
+func (m *MockCollectionWithStore) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
 	m.store.mutex.Lock()
 	defer m.store.mutex.Unlock()
 
@@ -224,7 +226,7 @@ func (m *mockCollectionWithStore) UpdateOne(ctx context.Context, filter interfac
 	return &mockUpdateResult{MatchedCount: 0, ModifiedCount: 0}, ErrDocumentNotFound
 }
 
-func (m *mockCollectionWithStore) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
+func (m *MockCollectionWithStore) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
 	m.store.mutex.Lock()
 	defer m.store.mutex.Unlock()
 
@@ -247,7 +249,7 @@ func (m *mockCollectionWithStore) ReplaceOne(ctx context.Context, filter interfa
 	return &mockUpdateResult{MatchedCount: 0, ModifiedCount: 0}, ErrDocumentNotFound
 }
 
-func (m *mockCollectionWithStore) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
+func (m *MockCollectionWithStore) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
 	m.store.mutex.Lock()
 	defer m.store.mutex.Unlock()
 
@@ -267,7 +269,7 @@ func (m *mockCollectionWithStore) DeleteOne(ctx context.Context, filter interfac
 	return &mockDeleteResult{DeletedCount: 0}, ErrDocumentNotFound
 }
 
-func (m *mockCollectionWithStore) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
+func (m *MockCollectionWithStore) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
 	m.store.mutex.RLock()
 	defer m.store.mutex.RUnlock()
 
@@ -341,11 +343,11 @@ func (m *mockCollectionWithStore) Find(ctx context.Context, filter interface{}, 
 	}, nil
 }
 
-func (m *mockCollectionWithStore) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
+func (m *MockCollectionWithStore) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
 	return &mockCursor{}, nil
 }
 
-func (m *mockCollectionWithStore) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
+func (m *MockCollectionWithStore) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
 	m.store.mutex.Lock()
 	defer m.store.mutex.Unlock()
 
@@ -373,33 +375,33 @@ func (m *mockCollectionWithStore) FindOneAndUpdate(ctx context.Context, filter i
 }
 
 // Basic mocks for simple cases where store functionality is not needed
-type mockCollection struct{}
+type MockCollection struct{}
 
-func (m *mockCollection) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
+func (m *MockCollection) CountDocuments(ctx context.Context, filter interface{}, opts ...*options.CountOptions) (int64, error) {
 	return 0, nil
 }
-func (m *mockCollection) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
+func (m *MockCollection) InsertOne(ctx context.Context, doc interface{}) (interface{}, error) {
 	return nil, nil
 }
-func (m *mockCollection) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
+func (m *MockCollection) FindOne(ctx context.Context, filter interface{}) SingleResultInterface {
 	return &mockSingleResult{}
 }
-func (m *mockCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
+func (m *MockCollection) UpdateOne(ctx context.Context, filter interface{}, update interface{}) (UpdateResultInterface, error) {
 	return &mockUpdateResult{MatchedCount: 1}, nil
 }
-func (m *mockCollection) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
+func (m *MockCollection) ReplaceOne(ctx context.Context, filter interface{}, replacement interface{}, opts ...*options.ReplaceOptions) (UpdateResultInterface, error) {
 	return &mockUpdateResult{MatchedCount: 1}, nil
 }
-func (m *mockCollection) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
+func (m *MockCollection) DeleteOne(ctx context.Context, filter interface{}) (DeleteResultInterface, error) {
 	return &mockDeleteResult{DeletedCount: 1}, nil
 }
-func (m *mockCollection) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
+func (m *MockCollection) Find(ctx context.Context, filter interface{}, opts ...*options.FindOptions) (CursorInterface, error) {
 	return &mockCursor{}, nil
 }
-func (m *mockCollection) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
+func (m *MockCollection) Aggregate(ctx context.Context, pipeline interface{}, opts ...*options.AggregateOptions) (CursorInterface, error) {
 	return &mockCursor{}, nil
 }
-func (m *mockCollection) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
+func (m *MockCollection) FindOneAndUpdate(ctx context.Context, filter interface{}, update interface{}, opts ...*options.FindOneAndUpdateOptions) SingleResultInterface {
 	return &mockSingleResult{}
 }
 
@@ -416,24 +418,24 @@ func (m *mockCursor) Close(ctx context.Context) error                    { retur
 func (m *mockCursor) Err() error                                         { return nil }
 func (m *mockCursor) All(ctx context.Context, results interface{}) error { return nil }
 
-// mockDatabaseProviderForOps implements DatabaseProvider for document operations tests
-type mockDatabaseProviderForOps struct {
-	store *mockDocumentStore
+// MockDatabaseProviderForOps implements DatabaseProvider for document operations tests
+type MockDatabaseProviderForOps struct {
+	store *MockDocumentStore
 }
 
-func (m *mockDatabaseProviderForOps) Collection(name string) CollectionInterface {
-	return &mockCollectionWithStore{store: m.store}
+func (m *MockDatabaseProviderForOps) Collection(name string) CollectionInterface {
+	return &MockCollectionWithStore{store: m.store}
 }
 
-func (m *mockDatabaseProviderForOps) Client() interface{} {
+func (m *MockDatabaseProviderForOps) Client() interface{} {
 	return nil
 }
 
-// newTestDocumentRepositoryForOps creates a DocumentRepository with functional mocks for document operations tests
-func newTestDocumentRepositoryForOps() *DocumentRepository {
-	mockStore := newMockDocumentStore()
-	mockCol := &mockCollectionWithStore{store: mockStore}
-	mockDB := &mockDatabaseProviderForOps{store: mockStore}
+// NewTestDocumentRepositoryForOps creates a DocumentRepository with functional mocks for document operations tests
+func NewTestDocumentRepositoryForOps() *DocumentRepository {
+	mockStore := NewMockDocumentStore()
+	mockCol := &MockCollectionWithStore{store: mockStore}
+	mockDB := &MockDatabaseProviderForOps{store: mockStore}
 
 	repo := &DocumentRepository{
 		db:             mockDB,
@@ -449,11 +451,11 @@ func newTestDocumentRepositoryForOps() *DocumentRepository {
 	return repo
 }
 
-// newTestDocumentRepositoryForOpsWithCleanup creates a DocumentRepository and returns a cleanup function
-func newTestDocumentRepositoryForOpsWithCleanup() (*DocumentRepository, func()) {
-	mockStore := newMockDocumentStore()
-	mockCol := &mockCollectionWithStore{store: mockStore}
-	mockDB := &mockDatabaseProviderForOps{store: mockStore}
+// NewTestDocumentRepositoryForOpsWithCleanup creates a DocumentRepository and returns a cleanup function
+func NewTestDocumentRepositoryForOpsWithCleanup() (*DocumentRepository, func()) {
+	mockStore := NewMockDocumentStore()
+	mockCol := &MockCollectionWithStore{store: mockStore}
+	mockDB := &MockDatabaseProviderForOps{store: mockStore}
 
 	repo := &DocumentRepository{
 		db:             mockDB,

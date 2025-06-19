@@ -310,8 +310,8 @@ func extractPrimitiveValue(val interface{}) interface{} {
 	return val
 }
 
-// singleMongoFilter traduce un filtro simple
-func (qe *MongoQueryEngine) singleMongoFilter(f model.Filter) bson.M {
+// SingleMongoFilter traduce un filtro simple (exposed for testing)
+func (qe *MongoQueryEngine) SingleMongoFilter(f model.Filter) bson.M {
 	return qe.singleMongoFilterWithContext(context.Background(), "", f)
 }
 
@@ -762,18 +762,18 @@ func (qe *MongoQueryEngine) GetQueryCapabilities() repository.QueryCapabilities 
 // Compile-time interface compliance check
 var _ repository.QueryEngine = (*MongoQueryEngine)(nil)
 
-// buildFieldFilter creates a MongoDB filter for a single field (used for testing)
-func (qe *MongoQueryEngine) buildFieldFilter(field string, operator model.Operator, value interface{}) bson.M {
+// BuildFieldFilter creates a MongoDB filter for a single field (exposed for testing)
+func (qe *MongoQueryEngine) BuildFieldFilter(field string, operator model.Operator, value interface{}) bson.M {
 	filter := model.Filter{
 		Field:    field,
 		Operator: operator,
 		Value:    value,
 	}
-	return qe.singleMongoFilter(filter)
+	return qe.SingleMongoFilter(filter)
 }
 
-// buildSimpleFieldFilter creates a MongoDB filter without Firestore field paths (used for testing)
-func buildSimpleFieldFilter(field string, operator model.Operator, value interface{}) bson.M {
+// BuildSimpleFieldFilter creates a MongoDB filter without Firestore field paths (exposed for testing)
+func BuildSimpleFieldFilter(field string, operator model.Operator, value interface{}) bson.M {
 	primitiveValue := extractPrimitiveValue(value)
 
 	switch operator {
@@ -802,8 +802,8 @@ func buildSimpleFieldFilter(field string, operator model.Operator, value interfa
 	}
 }
 
-// buildSimpleMongoFilter creates MongoDB filters without Firestore field paths (used for testing)
-func buildSimpleMongoFilter(filters []model.Filter) bson.M {
+// BuildSimpleMongoFilter creates MongoDB filters without Firestore field paths (exposed for testing)
+func BuildSimpleMongoFilter(filters []model.Filter) bson.M {
 	if len(filters) == 0 {
 		return bson.M{}
 	}
@@ -813,7 +813,7 @@ func buildSimpleMongoFilter(filters []model.Filter) bson.M {
 		if f.Composite == "or" && len(f.SubFilters) > 0 {
 			var orFilters []bson.M
 			for _, sub := range f.SubFilters {
-				subFilter := buildSimpleFieldFilter(sub.Field, sub.Operator, sub.Value)
+				subFilter := BuildSimpleFieldFilter(sub.Field, sub.Operator, sub.Value)
 				if len(subFilter) > 0 {
 					orFilters = append(orFilters, subFilter)
 				}
@@ -830,7 +830,7 @@ func buildSimpleMongoFilter(filters []model.Filter) bson.M {
 					// Handle nested OR filters within the AND
 					var orFilters []bson.M
 					for _, orSub := range sub.SubFilters {
-						subFilter := buildSimpleFieldFilter(orSub.Field, orSub.Operator, orSub.Value)
+						subFilter := BuildSimpleFieldFilter(orSub.Field, orSub.Operator, orSub.Value)
 						if len(subFilter) > 0 {
 							orFilters = append(orFilters, subFilter)
 						}
@@ -840,7 +840,7 @@ func buildSimpleMongoFilter(filters []model.Filter) bson.M {
 					}
 				} else if sub.Composite == "" {
 					// Handle regular field filter within the AND
-					subFilter := buildSimpleFieldFilter(sub.Field, sub.Operator, sub.Value)
+					subFilter := BuildSimpleFieldFilter(sub.Field, sub.Operator, sub.Value)
 					if len(subFilter) > 0 {
 						andFilters = append(andFilters, subFilter)
 					}
@@ -849,7 +849,7 @@ func buildSimpleMongoFilter(filters []model.Filter) bson.M {
 			continue
 		}
 		// Handle regular filters
-		singleFilter := buildSimpleFieldFilter(f.Field, f.Operator, f.Value)
+		singleFilter := BuildSimpleFieldFilter(f.Field, f.Operator, f.Value)
 		if len(singleFilter) > 0 {
 			andFilters = append(andFilters, singleFilter)
 		}

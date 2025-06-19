@@ -128,7 +128,7 @@ func clearCollection(repo *DocumentRepository, ctx context.Context, projectID, d
 }
 
 func TestFirestoreBehavior_CreateGetUpdateDelete(t *testing.T) {
-	repo := newTestDocumentRepositoryForOps() // Use improved mocks for consistent testing
+	repo := NewTestDocumentRepositoryForOps() // Use improved mocks for consistent testing
 	ctx := context.Background()
 	projectID, databaseID, collectionID := "p1", "d1", "col1"
 

@@ -187,7 +187,7 @@ func TestSingleMongoFilter(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := queryEngine.singleMongoFilter(tc.filter)
+			result := queryEngine.SingleMongoFilter(tc.filter)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -473,7 +473,7 @@ func TestSingleMongoFilterWithFieldPathResolver(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := queryEngine.singleMongoFilter(tc.filter)
+			result := queryEngine.SingleMongoFilter(tc.filter)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -849,7 +849,7 @@ func TestArrayOperatorsIntegration(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.name, func(t *testing.T) {
-				result := queryEngine.singleMongoFilter(test.filter)
+				result := queryEngine.SingleMongoFilter(test.filter)
 				assert.Equal(t, test.expected, result)
 			})
 		}
@@ -860,7 +860,7 @@ func TestArrayOperatorsIntegration(t *testing.T) {
 			Operator: "array-contains-any",
 			Value:    []interface{}{"tech", "gaming", "mobile"}, // Use []interface{} like the HTTP conversion
 		}
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 		expected := bson.M{
 			"fields.categories.arrayValue.values": bson.M{
 				"$elemMatch": bson.M{
@@ -883,7 +883,7 @@ func TestArrayOperatorsIntegration(t *testing.T) {
 			Value:    []interface{}{85, 90, 95},
 		}
 
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 		expected := bson.M{
 			"fields.scores.arrayValue.values": bson.M{
 				"$elemMatch": bson.M{
@@ -928,7 +928,7 @@ func TestArrayOperatorsEdgeCases(t *testing.T) {
 			Operator: "array-contains-any",
 			Value:    []interface{}{}, // Use []interface{} instead of []string{}
 		}
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 		expected := bson.M{
 			"fields.tags.arrayValue.values": bson.M{
 				"$elemMatch": bson.M{
@@ -947,7 +947,7 @@ func TestArrayOperatorsEdgeCases(t *testing.T) {
 			Value:    []interface{}{"high"}, // Use []interface{} instead of []string{}
 		}
 
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 		expected := bson.M{
 			"fields.priorities.arrayValue.values": bson.M{
 				"$elemMatch": bson.M{
@@ -967,7 +967,7 @@ func TestArrayOperatorsEdgeCases(t *testing.T) {
 			Operator: "array-contains",
 			Value:    nil,
 		}
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 		expected := bson.M{
 			"fields.nulls.arrayValue.values": bson.M{
 				"$elemMatch": bson.M{"nullValue": nil},
@@ -995,7 +995,7 @@ func TestArrayOperatorsPerformance(t *testing.T) {
 		}
 
 		// This should not panic or timeout
-		result := queryEngine.singleMongoFilter(filter)
+		result := queryEngine.SingleMongoFilter(filter)
 
 		// Verify the structure is correct		assert.Contains(t, result, "fields.large_tags.arrayValue.values")
 		arrayFilter := result["fields.large_tags.arrayValue.values"].(bson.M)

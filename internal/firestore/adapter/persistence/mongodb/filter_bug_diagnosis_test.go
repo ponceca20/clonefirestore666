@@ -71,7 +71,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 			t.Logf("Testing filter %d: Field=%s, Operator=%s, Value=%v",
 				i, filter.Field, filter.Operator, filter.Value)
 
-			individualFilter := queryEngine.singleMongoFilter(filter)
+			individualFilter := queryEngine.SingleMongoFilter(filter)
 			require.NotEmpty(t, individualFilter, "Individual filter should not be empty")
 
 			t.Logf("Individual MongoDB filter %d: %+v", i, individualFilter)
@@ -145,7 +145,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 		t.Logf("Original filter: %+v", filter)
 
 		// Convert using our adapter function
-		mongoFilter := queryEngine.singleMongoFilter(filter)
+		mongoFilter := queryEngine.SingleMongoFilter(filter)
 		t.Logf("Converted MongoDB filter: %+v", mongoFilter)
 
 		// Validate filter is not empty (this would indicate our bug)
@@ -161,7 +161,7 @@ func TestFilterBugDiagnosis(t *testing.T) {
 
 		t.Logf("Boolean filter: %+v", boolFilter)
 
-		mongoBoolFilter := queryEngine.singleMongoFilter(boolFilter)
+		mongoBoolFilter := queryEngine.SingleMongoFilter(boolFilter)
 		t.Logf("Converted boolean MongoDB filter: %+v", mongoBoolFilter)
 
 		require.NotEmpty(t, mongoBoolFilter,
