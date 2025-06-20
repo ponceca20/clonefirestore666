@@ -1,0 +1,66 @@
+// Ejemplo de reglas de seguridad de Firestore
+// Compatible con la sintaxis oficial de Firebase
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Reglas para usuarios - solo pueden acceder a su propio documento
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null;
+    }
+    
+    // Reglas para proyectos - solo admins pueden gestionar
+    match /projects/{projectId} {
+      allow read: if request.auth != null && 
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      allow write, delete: if request.auth != null && 
+                              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    // Reglas para tareas dentro de proyectos
+    match /projects/{projectId}/tasks/{taskId} {
+      // Los miembros del proyecto pueden leer y escribir tareas
+      allow read, write: if request.auth != null && 
+                            request.auth.uid in get(/databases/$(database)/documents/projects/$(projectId)).data.members;
+      
+      // Solo el creador o admins pueden eliminar
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.createdBy ||
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
+    
+    // Reglas para comentarios públicos - lectura abierta, escritura autenticada
+    match /comments/{commentId} {
+      allow read: if true;  // Lectura pública
+      allow create: if request.auth != null && 
+                       request.resource.data.authorId == request.auth.uid &&
+                       request.resource.data.content.size() > 0 &&
+                       request.resource.data.content.size() <= 1000;
+      
+      allow update: if request.auth != null && 
+                       request.auth.uid == resource.data.authorId;
+      
+      allow delete: if request.auth != null && 
+                       (request.auth.uid == resource.data.authorId ||
+                        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
+    
+    // Reglas para documentos privados - solo el propietario
+    match /private/{userId}/documents/{docId} {
+      allow read, write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Reglas para configuración del sistema - solo super admins
+    match /system/{document=**} {
+      allow read, write: if request.auth != null && 
+                            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "super_admin";
+    }
+    
+    // Reglas para archivos públicos - lectura libre, escritura controlada
+    match /public/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.canUpload == true;
+    }
+  }
+}

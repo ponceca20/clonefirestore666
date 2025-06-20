@@ -25,6 +25,11 @@ var (
 	ErrWeakPassword       = fmt.Errorf("password does not meet strength requirements")
 )
 
+// Email regex
+var (
+	emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+)
+
 // Password validation constants
 const (
 	minPasswordLength = 8
@@ -35,7 +40,6 @@ const (
 var (
 	projectIDRegex  = regexp.MustCompile(`^[a-z][-a-z0-9]{4,28}[a-z0-9]$`)
 	databaseIDRegex = regexp.MustCompile(`^[a-z][-a-z0-9]{0,62}[a-z0-9]$`)
-	emailRegex      = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
 )
 
 // AuthUsecaseInterface defines the contract for authentication use cases.
@@ -159,6 +163,17 @@ func (uc *AuthUsecase) validateDatabaseID(databaseID string) error {
 func (uc *AuthUsecase) Register(ctx context.Context, req RegisterRequest) (*AuthResponse, error) {
 	if err := uc.validateEmail(req.Email); err != nil {
 		return nil, err
+	}
+	if err := uc.validatePassword(req.Password); err != nil {
+		return nil, err
+	}
+	if err := uc.validateProjectID(req.TenantID); err != nil {
+		return nil, err
+	}
+	if req.OrganizationID != "" {
+		if err := uc.validateDatabaseID(req.OrganizationID); err != nil {
+			return nil, err
+		}
 	}
 	// Check if user already exists
 	existingUser, err := uc.authRepo.GetUserByEmail(ctx, req.Email)
@@ -377,6 +392,9 @@ func (uc *AuthUsecase) RefreshToken(ctx context.Context, refreshToken string) (*
 // User management
 
 func (uc *AuthUsecase) GetUserByID(ctx context.Context, userID, projectID string) (*model.User, error) {
+	if err := uc.validateProjectID(projectID); err != nil {
+		return nil, err
+	}
 	user, err := uc.authRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -426,6 +444,10 @@ func (uc *AuthUsecase) ChangePassword(ctx context.Context, userID, oldPassword, 
 	// Verify old password
 	if !user.CheckPassword(oldPassword) {
 		return model.ErrInvalidPassword
+	}
+
+	if err := uc.validatePassword(newPassword); err != nil {
+		return err
 	}
 
 	// Hash new password

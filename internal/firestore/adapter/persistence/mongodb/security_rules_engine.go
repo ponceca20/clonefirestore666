@@ -336,13 +336,16 @@ func (e *SecurityRulesEngine) ValidateRules(rules []*repository.SecurityRule) er
 		return nil
 	}
 
-	// Check for duplicate priorities
-	priorityMap := make(map[int]bool)
+	// Check for duplicate priorities only if both priority and match are the same
+	priorityPathMap := make(map[int]map[string]bool)
 	for _, rule := range rules {
-		if priorityMap[rule.Priority] {
-			return fmt.Errorf("duplicate priority %d found in rules", rule.Priority)
+		if priorityPathMap[rule.Priority] == nil {
+			priorityPathMap[rule.Priority] = make(map[string]bool)
 		}
-		priorityMap[rule.Priority] = true
+		if priorityPathMap[rule.Priority][rule.Match] {
+			return fmt.Errorf("duplicate priority %d and match '%s' found in rules", rule.Priority, rule.Match)
+		}
+		priorityPathMap[rule.Priority][rule.Match] = true
 	}
 
 	// Sort rules by priority for validation
@@ -441,6 +444,7 @@ func (e *SecurityRulesEngine) validateCondition(operation, condition string) err
 		"delete": true,
 		"create": true,
 		"update": true,
+		"list":   true, // Firestore supports 'list' operation
 	}
 	if !validOps[operation] {
 		return fmt.Errorf("invalid operation type '%s'", operation)
@@ -748,4 +752,31 @@ func (e *SecurityRulesEngine) evaluateCondition(ctx context.Context, program cel
 	}
 	reason := fmt.Sprintf("CEL expression evaluated to %v", result)
 	return result, reason, nil
+}
+
+// GetRawRules returns the raw .rules text for a project/database
+func (e *SecurityRulesEngine) GetRawRules(ctx context.Context, projectID, databaseID string) (string, error) {
+	filter := bson.M{
+		"project_id":  projectID,
+		"database_id": databaseID,
+	}
+	var result struct {
+		RulesText string `bson:"rules_text"`
+	}
+	err := e.collection.FindOne(ctx, filter).Decode(&result)
+	if err != nil {
+		return "", err
+	}
+	return result.RulesText, nil
+}
+
+// DeleteRules removes all security rules for a project/database
+func (e *SecurityRulesEngine) DeleteRules(ctx context.Context, projectID, databaseID string) error {
+	filter := bson.M{
+		"project_id":  projectID,
+		"database_id": databaseID,
+	}
+	_, err := e.collection.DeleteMany(ctx, filter)
+	e.ClearCache(projectID, databaseID)
+	return err
 }

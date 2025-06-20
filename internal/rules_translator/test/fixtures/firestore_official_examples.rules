@@ -1,0 +1,84 @@
+// Official Firestore Rules Examples for Compatibility Testing
+// These are real examples from Firebase documentation
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Basic authentication rules
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public read, authenticated write
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Resource-based rules
+    match /stories/{storyId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.author;
+    }
+    
+    // Complex conditions with get()
+    match /comments/{commentId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        (request.auth.uid == resource.data.author ||
+         get(/databases/$(database)/documents/posts/$(resource.data.postId)).data.author == request.auth.uid);
+    }
+    
+    // Nested collections
+    match /posts/{postId} {
+      allow read, write: if request.auth != null;
+      
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if request.auth != null && 
+          request.auth.uid == request.resource.data.author;
+        allow update, delete: if request.auth != null && 
+          request.auth.uid == resource.data.author;
+      }
+    }
+    
+    // Admin-only access
+    match /admin/{document=**} {
+      allow read, write: if request.auth != null && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.admin == true;
+    }
+    
+    // Validation rules
+    match /products/{productId} {
+      allow create: if request.auth != null && 
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.price is number &&
+        request.resource.data.price > 0;
+      
+      allow update: if request.auth != null && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['price', 'description']);
+      
+      allow delete: if request.auth != null &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.admin == true;
+    }
+    
+    // Time-based rules
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if request.auth != null && 
+        request.time < timestamp.date(2025, 12, 31);
+    }
+    
+    // List operations
+    match /public_posts/{postId} {
+      allow read: if true;
+      allow list: if request.query.limit <= 50;
+    }
+    
+    // Wildcard paths with validation
+    match /{path=**} {
+      allow read, write: if false; // Default deny
+    }
+  }
+}

@@ -689,3 +689,11 @@ func (m *MockSecurityRulesEngine) ClearCache(projectID, databaseID string) {
 func (m *MockSecurityRulesEngine) SetResourceAccessor(accessor repository.ResourceAccessor) {
 	// Mock implementation - no-op
 }
+
+func (m *MockSecurityRulesEngine) DeleteRules(ctx context.Context, projectID, databaseID string) error {
+	return nil
+}
+
+func (m *MockSecurityRulesEngine) GetRawRules(ctx context.Context, projectID, databaseID string) (string, error) {
+	return "rules_version = '2';", nil
+}

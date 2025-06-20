@@ -88,4 +88,10 @@ type SecurityRulesEngine interface {
 
 	// SetResourceAccessor sets the resource accessor for CEL functions
 	SetResourceAccessor(accessor ResourceAccessor)
+
+	// GetRawRules retrieves the raw rules as a string
+	GetRawRules(ctx context.Context, projectID, databaseID string) (string, error)
+
+	// DeleteRules deletes the security rules
+	DeleteRules(ctx context.Context, projectID, databaseID string) error
 }

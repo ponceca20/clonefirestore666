@@ -44,6 +44,15 @@ func (m *MockSecurityRulesEngine) ClearCache(projectID, databaseID string) {
 func (m *MockSecurityRulesEngine) SetResourceAccessor(accessor repository.ResourceAccessor) {
 	// Mock implementation - no-op
 }
+func (m *MockSecurityRulesEngine) DeleteRules(ctx context.Context, projectID, databaseID string) error {
+	// Mock implementation - no-op
+	return nil
+}
+
+func (m *MockSecurityRulesEngine) GetRawRules(ctx context.Context, projectID, databaseID string) (string, error) {
+	// Mock implementation - returns empty JSON
+	return "{}", nil
+}
 
 // DummyLogger implements logger.Logger with no-ops for all methods
 // Only the methods required by the interface are implemented for the test
