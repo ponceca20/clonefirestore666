@@ -175,6 +175,8 @@ func flattenFieldsForMongoDB(fields map[string]*model.FieldValue) map[string]int
 }
 
 // expandFieldsFromMongoDB convierte la estructura plana de MongoDB de vuelta a FieldValue
+//
+//lint:ignore U1000 false positive, this function is used via mongoFlatToModelDocument
 func expandFieldsFromMongoDB(flatFields map[string]interface{}) map[string]*model.FieldValue {
 	result := make(map[string]*model.FieldValue)
 

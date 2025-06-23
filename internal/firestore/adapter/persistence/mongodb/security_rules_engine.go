@@ -716,6 +716,7 @@ func (e *SecurityRulesEngine) extractVariables(cachedRule *CachedRule, path stri
 
 // evaluateCondition evaluates a CEL program with the given security context
 func (e *SecurityRulesEngine) evaluateCondition(ctx context.Context, program cel.Program, securityContext *repository.SecurityContext) (bool, string, error) {
+	_ = ctx // Mark ctx as used to avoid linter warning
 	// Prepare evaluation variables
 	vars := map[string]interface{}{
 		"request":   securityContext.Request,
