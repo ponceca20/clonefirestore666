@@ -292,20 +292,97 @@ func TestTransactionRoutes_Integration(t *testing.T) {
 // Integration test for atomic operation routes
 func TestAtomicRoutes_Integration(t *testing.T) {
 	app := fiber.New()
+	// IMPORTANT: For this specific test to be meaningful for the bug fix,
+	// it should ideally run against a real DB instance or a more sophisticated mock.
+	// However, we'll proceed with the mock for now to ensure layers are connected.
+	mockRepo := usecase.NewMockFirestoreRepo()
 	uc := usecase.NewFirestoreUsecase(
-		usecase.NewMockFirestoreRepo(), nil, nil, nil, &usecase.MockLogger{},
+		mockRepo, nil, nil, nil, &usecase.MockLogger{},
 	)
 	h := &httpadapter.HTTPHandler{FirestoreUC: uc, Log: &usecase.MockLogger{}}
 	h.RegisterRoutes(app)
 
-	orgID, projectID, databaseID, collectionID, documentID := "org-ponceca", "project01", "database01", "collection01", "document01"
+	orgID := "org-ponceca"
+	projectID := "project-atomic"
+	databaseID := "db-atomic"
+	collectionID := "col-atomic-" + RandString(6)
+	documentIDForExistingOps := "doc-atomic-existing" // For operations assuming doc exists
 	basePath := "/organizations/" + orgID + "/projects/" + projectID + "/databases/" + databaseID
 
-	// --- Atomic Increment ---
+	// --- Setup: Ensure project and database exist (mock repo might need this) ---
+	// (This part might be simplified if mockRepo handles missing hierarchy gracefully)
+	mockRepo.CreateProject(context.Background(), &model.Project{ProjectID: projectID, OrganizationID: orgID})
+	mockRepo.CreateDatabase(context.Background(), projectID, &model.Database{DatabaseID: databaseID})
+
+	t.Run("CreateDocumentThenIncrement", func(t *testing.T) {
+		docToCreateID := "doc-create-then-inc-" + RandString(6)
+		fullDocPath := basePath + "/documents/" + collectionID + "/" + docToCreateID
+
+		// 1. Create Document
+		createData := map[string]interface{}{"field1": "value1", "counter": 10}
+		createBodyBytes, _ := json.Marshal(map[string]interface{}{"fields": createData})
+
+		// Use the query param for documentId as per problem description
+		createReq := httptest.NewRequest(stdhttp.MethodPost, basePath+"/documents/"+collectionID+"?documentId="+docToCreateID, strings.NewReader(string(createBodyBytes)))
+		createReq.Header.Set("Content-Type", "application/json")
+		createResp, err := app.Test(createReq, -1) // -1 for no timeout
+		require.NoError(t, err)
+		bodyBytes, _ := io.ReadAll(createResp.Body)
+		createResp.Body.Close()
+		require.Equal(t, stdhttp.StatusCreated, createResp.StatusCode, "Create document failed: %s", string(bodyBytes))
+
+		// Optional: GET document to ensure it's visible (as per problem description)
+		getReq := httptest.NewRequest(stdhttp.MethodGet, fullDocPath, nil)
+		getResp, err := app.Test(getReq, -1)
+		require.NoError(t, err)
+		bodyBytesGet, _ := io.ReadAll(getResp.Body)
+		getResp.Body.Close()
+		require.Equal(t, stdhttp.StatusOK, getResp.StatusCode, "GET document failed: %s", string(bodyBytesGet))
+
+		// 2. Atomic Increment on the newly created document
+		incBody := `{"field": "counter", "incrementBy": 2}`
+		incReq := httptest.NewRequest(stdhttp.MethodPost, fullDocPath+"/increment", strings.NewReader(incBody))
+		incReq.Header.Set("Content-Type", "application/json")
+		incResp, err := app.Test(incReq, -1)
+		require.NoError(t, err)
+		bodyBytesInc, _ := io.ReadAll(incResp.Body)
+		incResp.Body.Close()
+		require.Equal(t, stdhttp.StatusOK, incResp.StatusCode, "Atomic increment failed: %s", string(bodyBytesInc))
+
+		// 3. Verify incremented value (optional, but good practice)
+		getAfterIncReq := httptest.NewRequest(stdhttp.MethodGet, fullDocPath, nil)
+		getAfterIncResp, err := app.Test(getAfterIncReq, -1)
+		require.NoError(t, err)
+		require.Equal(t, stdhttp.StatusOK, getAfterIncResp.StatusCode)
+		var docData struct {
+			Fields map[string]model.FieldValue `json:"fields"`
+		}
+		err = json.NewDecoder(getAfterIncResp.Body).Decode(&docData)
+		getAfterIncResp.Body.Close()
+		require.NoError(t, err)
+
+		// Firestore stores numbers as strings in integerValue, or float64 in doubleValue.
+		// The mock repo might do this differently. Let's be flexible.
+		counterField, ok := docData.Fields["counter"]
+		require.True(t, ok, "counter field not found after increment")
+
+		var counterVal float64
+		if iVal, isIntStr := counterField.Value.(string); isIntStr && counterField.ValueType == "integerValue" {
+			_, err := fmt.Sscan(iVal, &counterVal)
+			require.NoError(t, err, "Could not parse integerValue string to float64")
+		} else if fVal, isFloat := counterField.Value.(float64); isFloat {
+			counterVal = fVal
+		} else {
+			t.Fatalf("counter field is not a recognized number type: %T, %v", counterField.Value, counterField.Value)
+		}
+		require.Equal(t, float64(12), counterVal, "Counter value after increment is not 12")
+	})
+
+	// --- Atomic Increment (on a potentially pre-existing or mock-handled doc)---
 	incBody := `{"field": "counter", "incrementBy": 1}`
-	incReq := httptest.NewRequest(stdhttp.MethodPost, basePath+"/documents/"+collectionID+"/"+documentID+"/increment", strings.NewReader(incBody))
+	incReq := httptest.NewRequest(stdhttp.MethodPost, basePath+"/documents/"+collectionID+"/"+documentIDForExistingOps+"/increment", strings.NewReader(incBody))
 	incReq.Header.Set("Content-Type", "application/json")
-	incResp, err := app.Test(incReq)
+	incResp, err := app.Test(incReq, -1)
 	require.NoError(t, err)
 	require.Equal(t, stdhttp.StatusOK, incResp.StatusCode)
 

@@ -40,10 +40,10 @@ func (a *AtomicOperations) AtomicIncrement(ctx context.Context, projectID, datab
 	}
 
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	updateDoc := map[string]interface{}{
@@ -72,10 +72,10 @@ func (a *AtomicOperations) AtomicArrayUnion(ctx context.Context, projectID, data
 		return fmt.Errorf("elements array cannot be nil")
 	}
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	// Convertir elementos FieldValue a interface{} para MongoDB
@@ -112,10 +112,10 @@ func (a *AtomicOperations) AtomicArrayUnion(ctx context.Context, projectID, data
 // AtomicArrayRemove realiza una operación atómica de eliminación de arreglos
 func (a *AtomicOperations) AtomicArrayRemove(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, elements []*model.FieldValue) error {
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	// Convertir elementos FieldValue a interface{} para MongoDB
@@ -150,10 +150,10 @@ func (a *AtomicOperations) AtomicArrayRemove(ctx context.Context, projectID, dat
 // AtomicServerTimestamp establece un campo con la marca de tiempo actual del servidor
 func (a *AtomicOperations) AtomicServerTimestamp(ctx context.Context, projectID, databaseID, collectionID, documentID, field string) error {
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	// Construir la operación de actualización
@@ -184,10 +184,10 @@ func (a *AtomicOperations) AtomicDelete(ctx context.Context, projectID, database
 		return fmt.Errorf("fields list cannot be empty")
 	}
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	// Construir la operación unset para cada campo
@@ -222,10 +222,10 @@ func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, data
 		return fmt.Errorf("value cannot be nil")
 	}
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 		"$or": []map[string]interface{}{
 			{fmt.Sprintf("fields.%s", field): map[string]interface{}{"$exists": false}},
 			{fmt.Sprintf("fields.%s.value", field): nil},
@@ -257,10 +257,10 @@ func (a *AtomicOperations) AtomicSetIfEmpty(ctx context.Context, projectID, data
 // AtomicMaximum establece un campo al máximo entre su valor actual y el valor proporcionado
 func (a *AtomicOperations) AtomicMaximum(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value interface{}) error {
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	updateDoc := map[string]interface{}{
@@ -288,10 +288,10 @@ func (a *AtomicOperations) AtomicMaximum(ctx context.Context, projectID, databas
 // AtomicMinimum establece un campo al mínimo entre su valor actual y el valor proporcionado
 func (a *AtomicOperations) AtomicMinimum(ctx context.Context, projectID, databaseID, collectionID, documentID, field string, value interface{}) error {
 	filter := map[string]interface{}{
-		"project_id":    projectID,
-		"database_id":   databaseID,
-		"collection_id": collectionID,
-		"document_id":   documentID,
+		"projectID":    projectID,
+		"databaseID":   databaseID,
+		"collectionID": collectionID,
+		"documentID":   documentID,
 	}
 
 	updateDoc := map[string]interface{}{
